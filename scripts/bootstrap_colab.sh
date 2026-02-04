@@ -2,11 +2,11 @@
 set -euo pipefail
 
 # Usage in Colab:
-#   REPO_URL=https://github.com/<yourname>/mmsearch-zoom-agent.git \
+#   REPO_URL=https://github.com/Lyndonnn/search-test.git \
 #   MINI_DATA_URL=https://.../mini_data.tar.gz \
 #   bash scripts/bootstrap_colab.sh
 
-REPO_URL="${REPO_URL:-}"
+REPO_URL="${REPO_URL:-https://github.com/Lyndonnn/search-test.git}"
 REPO_DIR="${REPO_DIR:-mmsearch-zoom-agent}"
 MINI_DATA_URL="${MINI_DATA_URL:-}"
 MINI_DATA_DIR="${MINI_DATA_DIR:-data/mini_data}"
