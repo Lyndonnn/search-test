@@ -1,0 +1,87 @@
+diff --git a/mmsearch_r1/workers/multimodal/rollout/vllm_rollout_spmd.py b/mmsearch_r1/workers/multimodal/rollout/vllm_rollout_spmd.py
+index b72e491..fd5f3ef 100644
+--- a/mmsearch_r1/workers/multimodal/rollout/vllm_rollout_spmd.py
++++ b/mmsearch_r1/workers/multimodal/rollout/vllm_rollout_spmd.py
+@@ -57,6 +57,30 @@ def pad_to_max_stack(tensor_list: List[torch.Tensor], pad_token_id: int, dim: in
+     return torch.stack(padded_tensor_list, dim=dim)
+ 
+ 
++def _ensure_list_prompt_ids(prompt_token_ids: Union[List[int], np.ndarray]) -> List[int]:
++    if isinstance(prompt_token_ids, list):
++        return prompt_token_ids
++    if isinstance(prompt_token_ids, np.ndarray):
++        return prompt_token_ids.tolist()
++    return list(prompt_token_ids)
++
++
++def _extend_prompt_token_ids(
++    prompt_token_ids: Union[List[int], np.ndarray], new_token_ids: Union[List[int], np.ndarray], max_model_len: Union[int, None]
++) -> (List[int], int):
++    prompt_token_ids = _ensure_list_prompt_ids(prompt_token_ids)
++    new_token_ids = _ensure_list_prompt_ids(new_token_ids)
++    if max_model_len is None:
++        prompt_token_ids.extend(new_token_ids)
++        return prompt_token_ids, len(new_token_ids)
++    remaining = max_model_len - len(prompt_token_ids)
++    if remaining <= 0:
++        return prompt_token_ids, 0
++    if len(new_token_ids) > remaining:
++        new_token_ids = new_token_ids[:remaining]
++    prompt_token_ids.extend(new_token_ids)
++    return prompt_token_ids, len(new_token_ids)
++
++
+ class vLLMRollout_MultiTurn_MMSearch_R1(vLLMRollout):
+@@ -145,7 +169,7 @@ class vLLMRollout_MultiTurn_MMSearch_R1(vLLMRollout):
+                     # NOTE: use deepcopy to seperate variables
+                     vllm_inputs.append(
+                         {
+-                            'prompt_token_ids': deepcopy(raw_prompt_ids),
++                            'prompt_token_ids': deepcopy(_ensure_list_prompt_ids(raw_prompt_ids)),
+                             'multi_modal_data': deepcopy(multi_modal_data),
+                         }  # raw_prompt_ids: list
+                     )
+@@ -209,10 +233,15 @@ class vLLMRollout_MultiTurn_MMSearch_R1(vLLMRollout):
+                 for i_gen, response_ in zip(to_generate, response):
+                     # update conversation
+                     response_ = list(response_)
+-                    vllm_inputs[i_gen]['prompt_token_ids'] += response_
+-                    multi_turn_response_mask[i_gen].append(
+-                        torch.ones(len(response_), dtype=attention_mask.dtype, device=attention_mask.device)
+-                    )  # ASSISTANT, Mark as 1
++                    max_model_len = self.config.get("max_model_len", None)
++                    prompt_ids, appended_len = _extend_prompt_token_ids(
++                        vllm_inputs[i_gen]['prompt_token_ids'], response_, max_model_len
++                    )
++                    vllm_inputs[i_gen]['prompt_token_ids'] = prompt_ids
++                    if appended_len > 0:
++                        multi_turn_response_mask[i_gen].append(
++                            torch.ones(appended_len, dtype=attention_mask.dtype, device=attention_mask.device)
++                        )  # ASSISTANT, Mark as 1
+ 
+                     # [SEARCH TRIGGER] We check model's last turn response, if not any <xxx_search>, then remove this traj from to_generate
+                     decoded_resp_ = self.tokenizer.decode(response_, skip_special_tokens=True)
+@@ -399,17 +428,20 @@ class vLLMRollout_MultiTurn_MMSearch_R1(vLLMRollout):
+                     next_turn_prompt_ids = self.tokenizer.encode(search_result_message)
+ 
+                     # update conversation
+-                    vllm_inputs[i_gen_][
+-                        'prompt_token_ids'
+-                    ] += next_turn_prompt_ids  # this might go over response length, but we will cut it later by 'max_response_length_total'
++                    max_model_len = self.config.get("max_model_len", None)
++                    prompt_ids, appended_len = _extend_prompt_token_ids(
++                        vllm_inputs[i_gen_]['prompt_token_ids'], next_turn_prompt_ids, max_model_len
++                    )
++                    vllm_inputs[i_gen_]['prompt_token_ids'] = prompt_ids
+                     if search_result_img:
+                         vllm_inputs[i_gen_]['multi_modal_data']['image'] += search_result_img
+                         search_tool_return_images[
+                             i_gen_
+                         ] += search_result_img  # save images that returned by search tool
+-                    multi_turn_response_mask[i_gen_].append(
+-                        torch.zeros(len(next_turn_prompt_ids), dtype=attention_mask.dtype, device=attention_mask.device)
+-                    )  # USER, Mark as 0
++                    if appended_len > 0:
++                        multi_turn_response_mask[i_gen_].append(
++                            torch.zeros(appended_len, dtype=attention_mask.dtype, device=attention_mask.device)
++                        )  # USER, Mark as 0

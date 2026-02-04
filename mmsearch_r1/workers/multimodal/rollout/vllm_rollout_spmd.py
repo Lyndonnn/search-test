@@ -21,6 +21,7 @@ from concurrent.futures import (  # parallelize search call
     as_completed,
 )
 from copy import deepcopy
+from pathlib import Path
 from typing import Any, List, Union
 
 import numpy as np
@@ -57,6 +58,41 @@ def pad_to_max_stack(tensor_list: List[torch.Tensor], pad_token_id: int, dim: in
     return torch.stack(padded_tensor_list, dim=dim)
 
 
+def _ensure_list_prompt_ids(prompt_token_ids: Union[List[int], np.ndarray]) -> List[int]:
+    if isinstance(prompt_token_ids, list):
+        return prompt_token_ids
+    if isinstance(prompt_token_ids, np.ndarray):
+        return prompt_token_ids.tolist()
+    return list(prompt_token_ids)
+
+
+def _extend_prompt_token_ids(
+    prompt_token_ids: Union[List[int], np.ndarray], new_token_ids: Union[List[int], np.ndarray], max_model_len: Union[int, None]
+) -> (List[int], int):
+    prompt_token_ids = _ensure_list_prompt_ids(prompt_token_ids)
+    new_token_ids = _ensure_list_prompt_ids(new_token_ids)
+    if max_model_len is None:
+        prompt_token_ids.extend(new_token_ids)
+        return prompt_token_ids, len(new_token_ids)
+    remaining = max_model_len - len(prompt_token_ids)
+    if remaining <= 0:
+        return prompt_token_ids, 0
+    if len(new_token_ids) > remaining:
+        new_token_ids = new_token_ids[:remaining]
+    prompt_token_ids.extend(new_token_ids)
+    return prompt_token_ids, len(new_token_ids)
+
+
+def _load_prompt_with_fallback(path_value: Union[str, None], fallback_path: Path, label: str) -> str:
+    prompt_path = path_value if path_value else str(fallback_path)
+    try:
+        with open(prompt_path, 'rb') as file:
+            return pickle.load(file)
+    except Exception as e:
+        print(f"Error: {e} | {label} fallback failed, using empty string")
+        return ""
+
+
 class vLLMRollout_MultiTurn_MMSearch_R1(vLLMRollout):
 
     def __init__(self, model_path: str, config: DictConfig, tokenizer, model_hf_config, **kwargs):
@@ -71,16 +107,17 @@ class vLLMRollout_MultiTurn_MMSearch_R1(vLLMRollout):
 
         self.user_prompt_after_image_search = None
         self.user_prompt_after_text_search = None
-        try:
-            with open(config.search.user_prompt_after_image_search, 'rb') as file:
-                self.user_prompt_after_image_search = pickle.load(file)
-        except Exception as e:
-            print(f"Error: {e} | user_prompt_after_image_search default to None")
-        try:
-            with open(config.search.user_prompt_after_text_search, 'rb') as file:
-                self.user_prompt_after_text_search = pickle.load(file)
-        except Exception as e:
-            print(f"Error: {e} | user_prompt_after_text_search default to None")
+        default_prompt_path = Path(__file__).resolve().parents[3] / "prompts" / "round_1_user_prompt_qwenvl.pkl"
+        self.user_prompt_after_image_search = _load_prompt_with_fallback(
+            config.search.get("user_prompt_after_image_search", None),
+            default_prompt_path,
+            "user_prompt_after_image_search",
+        )
+        self.user_prompt_after_text_search = _load_prompt_with_fallback(
+            config.search.get("user_prompt_after_text_search", None),
+            default_prompt_path,
+            "user_prompt_after_text_search",
+        )
 
         print(f"[Prompt Set] user_prompt_after_text_search: {self.user_prompt_after_text_search}")
         print(f"[Prompt Set] user_prompt_after_image_search: {self.user_prompt_after_image_search}")
@@ -145,7 +182,7 @@ class vLLMRollout_MultiTurn_MMSearch_R1(vLLMRollout):
                     # NOTE: use deepcopy to seperate variables
                     vllm_inputs.append(
                         {
-                            'prompt_token_ids': deepcopy(raw_prompt_ids),
+                            'prompt_token_ids': deepcopy(_ensure_list_prompt_ids(raw_prompt_ids)),
                             'multi_modal_data': deepcopy(multi_modal_data),
                         }  # raw_prompt_ids: list
                     )
@@ -209,10 +246,15 @@ class vLLMRollout_MultiTurn_MMSearch_R1(vLLMRollout):
                 for i_gen, response_ in zip(to_generate, response):
                     # update conversation
                     response_ = list(response_)
-                    vllm_inputs[i_gen]['prompt_token_ids'] += response_
-                    multi_turn_response_mask[i_gen].append(
-                        torch.ones(len(response_), dtype=attention_mask.dtype, device=attention_mask.device)
-                    )  # ASSISTANT, Mark as 1
+                    max_model_len = self.config.get("max_model_len", None)
+                    prompt_ids, appended_len = _extend_prompt_token_ids(
+                        vllm_inputs[i_gen]['prompt_token_ids'], response_, max_model_len
+                    )
+                    vllm_inputs[i_gen]['prompt_token_ids'] = prompt_ids
+                    if appended_len > 0:
+                        multi_turn_response_mask[i_gen].append(
+                            torch.ones(appended_len, dtype=attention_mask.dtype, device=attention_mask.device)
+                        )  # ASSISTANT, Mark as 1
 
                     # [SEARCH TRIGGER] We check model's last turn response, if not any <xxx_search>, then remove this traj from to_generate
                     decoded_resp_ = self.tokenizer.decode(response_, skip_special_tokens=True)
@@ -399,17 +441,20 @@ class vLLMRollout_MultiTurn_MMSearch_R1(vLLMRollout):
                     next_turn_prompt_ids = self.tokenizer.encode(search_result_message)
 
                     # update conversation
-                    vllm_inputs[i_gen_][
-                        'prompt_token_ids'
-                    ] += next_turn_prompt_ids  # this might go over response length, but we will cut it later by 'max_response_length_total'
+                    max_model_len = self.config.get("max_model_len", None)
+                    prompt_ids, appended_len = _extend_prompt_token_ids(
+                        vllm_inputs[i_gen_]['prompt_token_ids'], next_turn_prompt_ids, max_model_len
+                    )
+                    vllm_inputs[i_gen_]['prompt_token_ids'] = prompt_ids
                     if search_result_img:
                         vllm_inputs[i_gen_]['multi_modal_data']['image'] += search_result_img
                         search_tool_return_images[
                             i_gen_
                         ] += search_result_img  # save images that returned by search tool
-                    multi_turn_response_mask[i_gen_].append(
-                        torch.zeros(len(next_turn_prompt_ids), dtype=attention_mask.dtype, device=attention_mask.device)
-                    )  # USER, Mark as 0
+                    if appended_len > 0:
+                        multi_turn_response_mask[i_gen_].append(
+                            torch.zeros(appended_len, dtype=attention_mask.dtype, device=attention_mask.device)
+                        )  # USER, Mark as 0
 
                 # update pbar
                 pbar.update(worker_trajs_count - len(to_generate))

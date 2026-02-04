@@ -16,6 +16,10 @@ data:
   user_prompt_after_image_search: null
   user_prompt_after_text_search: null
 
+hydra:
+  searchpath:
+    - file://configs
+
 actor_rollout_ref:
   hybrid_engine: True
   model:

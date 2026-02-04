@@ -1,0 +1,52 @@
+diff --git a/mmsearch_r1/workers/multimodal/rollout/vllm_rollout_spmd.py b/mmsearch_r1/workers/multimodal/rollout/vllm_rollout_spmd.py
+index fd5f3ef..5022e05 100644
+--- a/mmsearch_r1/workers/multimodal/rollout/vllm_rollout_spmd.py
++++ b/mmsearch_r1/workers/multimodal/rollout/vllm_rollout_spmd.py
+@@ -21,6 +21,7 @@ from concurrent.futures import (  # parallelize search call
+     as_completed,
+ )
+ from copy import deepcopy
++from pathlib import Path
+ from typing import Any, List, Union
+ 
+ import numpy as np
+@@ -81,6 +82,16 @@ def _extend_prompt_token_ids(
+     return prompt_token_ids, len(new_token_ids)
+ 
+ 
++def _load_prompt_with_fallback(path_value: Union[str, None], fallback_path: Path, label: str) -> str:
++    prompt_path = path_value if path_value else str(fallback_path)
++    try:
++        with open(prompt_path, 'rb') as file:
++            return pickle.load(file)
++    except Exception as e:
++        print(f"Error: {e} | {label} fallback failed, using empty string")
++        return ""
++
++
+ class vLLMRollout_MultiTurn_MMSearch_R1(vLLMRollout):
+@@ -95,16 +106,17 @@ class vLLMRollout_MultiTurn_MMSearch_R1(vLLMRollout):
+ 
+         self.user_prompt_after_image_search = None
+         self.user_prompt_after_text_search = None
+-        try:
+-            with open(config.search.user_prompt_after_image_search, 'rb') as file:
+-                self.user_prompt_after_image_search = pickle.load(file)
+-        except Exception as e:
+-            print(f"Error: {e} | user_prompt_after_image_search default to None")
+-        try:
+-            with open(config.search.user_prompt_after_text_search, 'rb') as file:
+-                self.user_prompt_after_text_search = pickle.load(file)
+-        except Exception as e:
+-            print(f"Error: {e} | user_prompt_after_text_search default to None")
++        default_prompt_path = Path(__file__).resolve().parents[3] / "prompts" / "round_1_user_prompt_qwenvl.pkl"
++        self.user_prompt_after_image_search = _load_prompt_with_fallback(
++            config.search.get("user_prompt_after_image_search", None),
++            default_prompt_path,
++            "user_prompt_after_image_search",
++        )
++        self.user_prompt_after_text_search = _load_prompt_with_fallback(
++            config.search.get("user_prompt_after_text_search", None),
++            default_prompt_path,
++            "user_prompt_after_text_search",
++        )
