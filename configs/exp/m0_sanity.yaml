@@ -28,22 +28,9 @@ actor_rollout_ref:
     kl_loss_coef: 0.001
     kl_loss_type: low_var_kl
   rollout:
-    name: vllm_multiturn_mmsearch
-    tensor_model_parallel_size: 1
-    gpu_memory_utilization: 0.85
-    n: 1
-    max_gen_round: 1
-    response_length_total: 128
+    name: hf
+    micro_batch_size_per_gpu: 1
     log_prob_micro_batch_size_per_gpu: 1
-    search:
-      image_search_limit: 0
-      text_search_limit: 0
-    free_cache_engine: true
-    enforce_eager: true
-    enable_chunked_prefill: true
-    max_num_seqs: 1
-    max_num_batched_tokens: 1024
-    max_model_len: 896
   ref:
     log_prob_micro_batch_size_per_gpu: 1
     fsdp_config:
