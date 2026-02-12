@@ -23,12 +23,25 @@ from verl.single_controller.ray import (
 )
 from verl.trainer.ppo import core_algos
 from verl.trainer.ppo.metric_utils import compute_timing_metrics, reduce_metrics
-from verl.trainer.ppo.ray_trainer import (
-    AdvantageEstimator,
-    Role,
-    _timer,
-    apply_kl_penalty,
-)
+try:
+    from verl.trainer.ppo.ray_trainer import (
+        AdvantageEstimator,
+        Role,
+        _timer,
+        apply_kl_penalty,
+    )
+except ImportError:
+    from contextlib import contextmanager
+
+    from verl.trainer.ppo.ray_trainer import (
+        AdvantageEstimator,
+        Role,
+        apply_kl_penalty,
+    )
+
+    @contextmanager
+    def _timer(name, timing_raw):
+        yield
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
 from verl.utils.seqlen_balancing import (
     get_seqlen_balanced_partitions,
