@@ -28,15 +28,14 @@ def main(config):
 def run_ppo(config, compute_score=None):
     # If an exp config group is provided (e.g., +exp=m0_sanity),
     # merge it into the root config so overrides take effect.
-    try:
-        from omegaconf import OmegaConf, open_dict
+    from omegaconf import DictConfig, OmegaConf, open_dict
 
-        if "exp" in config and isinstance(config.exp, DictConfig):
-            config = OmegaConf.merge(config, config.exp)
+    if "exp" in config:
+        exp_cfg = config.exp
+        if OmegaConf.is_config(exp_cfg) or isinstance(exp_cfg, DictConfig):
+            config = OmegaConf.merge(config, exp_cfg)
             with open_dict(config):
                 del config["exp"]
-    except Exception:
-        pass
 
     if not ray.is_initialized():
         # this is for local ray cluster
