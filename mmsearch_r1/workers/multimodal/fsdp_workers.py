@@ -208,6 +208,7 @@ class ActorRolloutRefWorker(Worker):
         # NOTE(fix me): tie_word_embedding causes meta_tensor init to hang
         init_context = get_init_weight_context_manager(use_meta_tensor=not actor_model_config.tie_word_embeddings)
 
+        attn_impl = self.config.model.get('attn_implementation', 'flash_attention_2')
         with init_context(), warnings.catch_warnings():
             warnings.simplefilter("ignore")
             if type(actor_model_config) in AutoModelForVision2Seq._model_mapping.keys():
@@ -219,7 +220,7 @@ class ActorRolloutRefWorker(Worker):
                 pretrained_model_name_or_path=local_path,
                 torch_dtype=torch_dtype,
                 config=actor_model_config,
-                attn_implementation='flash_attention_2',
+                attn_implementation=attn_impl,
                 trust_remote_code=trust_remote_code,
             )
             # Apply Liger kernel to the model if use_liger is set to True
@@ -807,6 +808,7 @@ class CriticWorker(Worker):
         from transformers import AutoConfig, AutoModelForTokenClassification
 
         trust_remote_code = False
+        attn_impl = config.model.get('attn_implementation', 'flash_attention_2')
         critic_model_config = AutoConfig.from_pretrained(local_path, trust_remote_code=trust_remote_code)
         critic_model_config.num_labels = 1
 
@@ -821,7 +823,7 @@ class CriticWorker(Worker):
                 pretrained_model_name_or_path=local_path,
                 torch_dtype=torch_dtype,
                 config=critic_model_config,
-                attn_implementation='flash_attention_2',
+                attn_implementation=attn_impl,
                 trust_remote_code=trust_remote_code,
             )
             use_remove_padding = config.model.get("use_remove_padding", False)
