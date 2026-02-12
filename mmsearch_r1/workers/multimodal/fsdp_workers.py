@@ -231,12 +231,13 @@ class ActorRolloutRefWorker(Worker):
 
                 _apply_liger_kernel_to_instance(model=actor_module)
 
-            apply_monkey_patch(
-                model=actor_module,
-                use_remove_padding=use_remove_padding,
-                ulysses_sp_size=self.ulysses_sequence_parallel_size,
-                use_fused_kernels=use_fused_kernels,
-            )
+            if not self.config.model.get("disable_monkey_patch", False):
+                apply_monkey_patch(
+                    model=actor_module,
+                    use_remove_padding=use_remove_padding,
+                    ulysses_sp_size=self.ulysses_sequence_parallel_size,
+                    use_fused_kernels=use_fused_kernels,
+                )
             # some parameters may not in torch_dtype. TODO(zhangchi.usc1992) remove this after we switch to fsdp2
             actor_module.to(torch_dtype)
 
@@ -828,11 +829,12 @@ class CriticWorker(Worker):
             )
             use_remove_padding = config.model.get("use_remove_padding", False)
 
-            apply_monkey_patch(
-                model=critic_module,
-                use_remove_padding=use_remove_padding,
-                ulysses_sp_size=self.ulysses_sequence_parallel_size,
-            )
+            if not config.model.get("disable_monkey_patch", False):
+                apply_monkey_patch(
+                    model=critic_module,
+                    use_remove_padding=use_remove_padding,
+                    ulysses_sp_size=self.ulysses_sequence_parallel_size,
+                )
 
             # some parameters may not in torch_dtype
             critic_module.to(torch_dtype)
