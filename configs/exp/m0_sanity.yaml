@@ -23,10 +23,16 @@ actor_rollout_ref:
       lr: 2e-6
     ppo_mini_batch_size: 1
     ppo_micro_batch_size_per_gpu: 1
-    use_multi_turn_response_mask: true
+    use_multi_turn_response_mask: false
     use_kl_loss: true
     kl_loss_coef: 0.001
     kl_loss_type: low_var_kl
+    fsdp_config:
+      model_dtype: fp16
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp32
+        buffer_dtype: fp32
   rollout:
     name: hf
     micro_batch_size_per_gpu: 1
@@ -50,3 +56,12 @@ trainer:
   search_penalty: 0.1
   format_penalty: 0.1
   reward_mode: EM
+
+critic:
+  model:
+    fsdp_config:
+      model_dtype: fp16
+      mixed_precision:
+        param_dtype: fp16
+        reduce_dtype: fp32
+        buffer_dtype: fp32
