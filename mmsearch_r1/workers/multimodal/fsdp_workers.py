@@ -35,6 +35,14 @@ logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv('VERL_PPO_LOGGING_LEVEL', 'WARN'))
 
 
+def _get_vllm_mode():
+    try:
+        from verl.workers.rollout.vllm_rollout import vllm_mode as _vllm_mode
+        return _vllm_mode
+    except Exception:
+        return os.getenv("VERL_VLLM_MODE", "spmd")
+
+
 def create_device_mesh(world_size, fsdp_size):
     if fsdp_size < 0 or fsdp_size >= world_size:
         device_mesh = init_device_mesh('cuda', mesh_shape=(world_size,), mesh_dim_names=['fsdp'])
@@ -348,13 +356,13 @@ class ActorRolloutRefWorker(Worker):
                 from verl.workers.rollout.vllm_rollout import (
                     FIREvLLMRollout as vLLMRollout,
                 )
-                from verl.workers.rollout.vllm_rollout import vllm_mode
             else:
-                from verl.workers.rollout.vllm_rollout import vLLMRollout, vllm_mode
+                from verl.workers.rollout.vllm_rollout import vLLMRollout
             from verl.workers.sharding_manager.fsdp_vllm import FSDPVLLMShardingManager
 
             log_gpu_memory_usage('Before building vllm rollout', logger=None)
             local_path = copy_to_local(self.config.model.path)
+            vllm_mode = _get_vllm_mode()
             if vllm_mode == 'customized':
                 rollout = vLLMRollout(
                     actor_module=self.actor_module_fsdp,
@@ -384,8 +392,6 @@ class ActorRolloutRefWorker(Worker):
             )
             log_gpu_memory_usage('After building sharding manager', logger=None)
         elif self.config.rollout.name == 'vllm_multiturn_mmsearch':
-            from verl.workers.rollout.vllm_rollout import vllm_mode
-
             if self.config.rollout.use_fire_sampling:
                 # FIXME: use_fire_sampling does not support vLLMRollout_MultiTurn_MMSearch_R1
                 from verl.workers.rollout.vllm_rollout import (
@@ -397,6 +403,7 @@ class ActorRolloutRefWorker(Worker):
 
             log_gpu_memory_usage('Before building vllm_multi_turn rollout', logger=None)
             local_path = copy_to_local(self.config.model.path)
+            vllm_mode = _get_vllm_mode()
             if vllm_mode == 'spmd':
                 rollout = vLLMRollout_MultiTurn_MMSearch_R1(
                     model_path=local_path,
