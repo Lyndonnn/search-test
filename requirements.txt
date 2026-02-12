@@ -12,4 +12,3 @@ sentencepiece
 accelerate
 safetensors
 huggingface_hub>=0.24.0
-git+https://github.com/volcengine/verl.git
