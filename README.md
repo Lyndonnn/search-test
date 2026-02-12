@@ -26,6 +26,14 @@
 - [Train & Eval](#train--eval)
 
 ## Installation
+Quickstart (Colab or local):
+```bash
+git clone https://github.com/Lyndonnn/search-test.git
+cd search-test
+pip install -r requirements.txt
+bash scripts/run_m0_sanity.sh
+```
+
 ```bash
 # Clone this repo with submodules
 git clone --recurse-submodules https://github.com/EvolvingLMMs-Lab/multimodal-search-r1.git
