@@ -346,7 +346,12 @@ class ActorRolloutRefWorker(Worker):
 
         if self.config.rollout.name == 'hf':
             from verl.workers.rollout import HFRollout
-            from verl.workers.sharding_manager import BaseShardingManager
+            try:
+                from verl.workers.sharding_manager import BaseShardingManager
+            except Exception:
+                class BaseShardingManager:  # minimal fallback for older verl
+                    def __init__(self, *args, **kwargs):
+                        pass
 
             rollout = HFRollout(module=self.actor_module_fsdp, config=self.config.rollout)
             rollout_sharding_manager = BaseShardingManager()
