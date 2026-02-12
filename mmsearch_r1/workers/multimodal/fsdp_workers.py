@@ -345,7 +345,7 @@ class ActorRolloutRefWorker(Worker):
         rollout_device_mesh = init_device_mesh('cuda', mesh_shape=(dp, infer_tp), mesh_dim_names=['dp', 'infer_tp'])
 
         if self.config.rollout.name == 'hf':
-            from verl.workers.rollout import HFRollout
+            from mmsearch_r1.workers.multimodal.rollout.hf_rollout_shim import HFRolloutShim as HFRollout
             try:
                 from verl.workers.sharding_manager import BaseShardingManager
             except Exception:
