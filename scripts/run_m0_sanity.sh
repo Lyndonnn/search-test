@@ -53,6 +53,7 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   actor_rollout_ref.actor.kl_loss_coef=0.001 \
   actor_rollout_ref.actor.kl_loss_type=low_var_kl \
   actor_rollout_ref.model.enable_gradient_checkpointing=True \
+  actor_rollout_ref.ref.micro_batch_size_per_gpu=1 \
   actor_rollout_ref.rollout.name=${ROLLOUT_NAME} \
   trainer.logger=['console'] \
   trainer.n_gpus_per_node=1 \
