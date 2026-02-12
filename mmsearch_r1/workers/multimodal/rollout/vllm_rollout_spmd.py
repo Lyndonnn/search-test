@@ -33,10 +33,25 @@ from verl import DataProto
 from verl.third_party.vllm import vllm_version
 from verl.utils import hf_processor
 from verl.utils.torch_functional import pad_sequence_to_length
-from verl.workers.rollout.vllm_rollout.vllm_rollout_spmd import (
-    _repeat_interleave,
-    vLLMRollout,
-)
+try:
+    from verl.workers.rollout.vllm_rollout.vllm_rollout_spmd import (
+        _repeat_interleave,
+        vLLMRollout,
+    )
+except Exception:
+    from verl.workers.rollout.vllm_rollout import vLLMRollout
+
+    def _repeat_interleave(x, n):
+        if isinstance(x, torch.Tensor):
+            return x.repeat_interleave(n, dim=0)
+        if isinstance(x, np.ndarray):
+            return np.repeat(x, n, axis=0)
+        if isinstance(x, list):
+            return [item for item in x for _ in range(n)]
+        try:
+            return type(x)(_repeat_interleave(list(x), n))
+        except Exception:
+            return x
 
 from mmsearch_r1.utils.tools.image_search import call_image_search
 from mmsearch_r1.utils.tools.text_search import call_text_search
