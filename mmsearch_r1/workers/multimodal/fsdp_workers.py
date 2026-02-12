@@ -353,6 +353,18 @@ class ActorRolloutRefWorker(Worker):
                     def __init__(self, *args, **kwargs):
                         pass
 
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, exc_type, exc_val, exc_tb):
+                        return False
+
+                    def preprocess_data(self, data):
+                        return data
+
+                    def postprocess_data(self, data):
+                        return data
+
             rollout = HFRollout(module=self.actor_module_fsdp, config=self.config.rollout)
             rollout_sharding_manager = BaseShardingManager()
             # TODO: a sharding manager that do nothing?
