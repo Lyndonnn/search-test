@@ -94,6 +94,13 @@ def generate_response(model, processor, messages):
 
     return output_text[0]
 
+
+def extract_last_text_search(text: str):
+    query = None
+    for match in re.finditer(r'<text_search>(.*?)</text_search>', text, re.DOTALL):
+        query = match.group(1)
+    return query
+
 def load_image_as_base64(image_source):
     try:
         if image_source.startswith("http://") or image_source.startswith("https://"):
@@ -121,16 +128,10 @@ def pil_images_to_base64(images, image_format="PNG"):
         base64_list.append(base64_str)
     return base64_list
 
-def main():
 
-    args = parse_args()
-    model_path = args.model_path
-    
+def run_mmsearch_demo(model, processor, image_source: str, question: str):
     # Load Image to Base64
-    base64Frames_query_image = load_image_as_base64(args.image)
-
-    # Load Model
-    model, processor = load_model_and_processor(model_path)
+    base64Frames_query_image = load_image_as_base64(image_source)
 
     # Load Prompt
     with open("mmsearch_r1/prompts/round_1_user_prompt_qwenvl.pkl", "rb") as f:
@@ -141,42 +142,37 @@ def main():
     with open("mmsearch_r1/prompts/after_text_search_prompt_qwenvl.pkl", "rb") as f:
         after_text_search_prompt = pickle.load(f)
 
-    # Init Messages
     messages = []
+    responses = []
+    tool_trace = []
 
-    # 1st-User Message
     messages.append({
         "role": "user",
         "content": [
-            {"type": "text", "text": f"{round_1_prompt}\nQuestion: {args.question}\nImage: "},
+            {"type": "text", "text": f"{round_1_prompt}\nQuestion: {question}\nImage: "},
             {"type": "image", "image": f"data:image/png;base64,{base64Frames_query_image}", "max_pixels": MAX_PIXELS},
         ]
     })
 
-    print(f">>> Question: {args.question}")
-
-    # 1st-Round Response
     assistant_first_reply = generate_response(model, processor, messages)
-    print(f">>> 1st Response: {assistant_first_reply}")
+    responses.append(assistant_first_reply)
 
-    # Call Image Search at 1st Round Response
     if re.search(r'<search><img></search>$', assistant_first_reply):
-        # 1st-Assistant Message
-        messages.append({
-            "role": "assistant",
-            "content": [
-                {"type": "text", "text": assistant_first_reply}
-            ]
-        })
+        messages.append({"role": "assistant", "content": [{"type": "text", "text": assistant_first_reply}]})
 
-        # Call Image Search
-        tool_returned_str, tool_returned_images, tool_stat = call_image_search(image_url=args.image)
-        
-        # ⚠️fake webpage_title_list, it should be parsed from `tool_returned_str`
+        tool_returned_str, tool_returned_images, tool_stat = call_image_search(image_url=image_source)
+        tool_trace.append(
+            {
+                "tool": "image_search",
+                "query": image_source,
+                "status": tool_stat,
+                "returned_text": tool_returned_str,
+            }
+        )
+
         img_tool_returned_web_title_list = [f"Webpage Title {i+1}" for i in range(len(tool_returned_images))]
-
         base64Frames_image_search_results_list = pil_images_to_base64(tool_returned_images)
-        # 2nd-User Response
+
         messages.append({
             "role": "user",
             "content": [
@@ -189,43 +185,71 @@ def main():
                         {"type": "text", "text": f"Title: {title}"}
                     ]
                 ],
-                {"type": "text", "text": f"</information> Original user's question: {args.question}\n{after_image_search_prompt}"},
+                {"type": "text", "text": f"</information> Original user's question: {question}\n{after_image_search_prompt}"},
             ],
         })
 
-        # 2nd-Round Response Generation
         assistant_second_reply = generate_response(model, processor, messages)
-        print(f">>> 2nd Response: {assistant_second_reply}")
-        
+        responses.append(assistant_second_reply)
+
         if re.search(r'<text_search>.*</text_search>$', assistant_second_reply):
-            text_to_search = None
-            for match in re.finditer(r'<text_search>(.*?)</text_search>', assistant_second_reply):
-                text_to_search = match.group(1)
-            txt_tool_returned_str, _ = call_text_search(text_to_search)
+            text_to_search = extract_last_text_search(assistant_second_reply)
+            txt_tool_returned_str, tool_stat = call_text_search(text_to_search)
+            tool_trace.append(
+                {
+                    "tool": "text_search",
+                    "query": text_to_search,
+                    "status": tool_stat,
+                    "returned_text": txt_tool_returned_str,
+                }
+            )
             messages.append(
                 {"role": "user", "content": [
-                {"type": "text", "text": "Search Results: <information>" + txt_tool_returned_str + f"</information> Original question: {args.question}\n{after_text_search_prompt}"}
-            ]})
-            # 3rd-Round Response Generation
+                    {"type": "text", "text": "Search Results: <information>" + txt_tool_returned_str + f"</information> Original question: {question}\n{after_text_search_prompt}"}
+                ]}
+            )
             assistant_third_reply = generate_response(model, processor, messages)
-            print(f">>> 3rd Response: {assistant_third_reply}")
+            responses.append(assistant_third_reply)
 
-    # Call Text Search at 1st Round Response
     elif re.search(r'<text_search>.*</text_search>$', assistant_first_reply):
-        text_to_search = None
-        for match in re.finditer(r'<text_search>(.*?)</text_search>', assistant_first_reply):
-            text_to_search = match.group(1)
-        txt_tool_returned_str, _ = call_text_search(text_to_search)
+        text_to_search = extract_last_text_search(assistant_first_reply)
+        txt_tool_returned_str, tool_stat = call_text_search(text_to_search)
+        tool_trace.append(
+            {
+                "tool": "text_search",
+                "query": text_to_search,
+                "status": tool_stat,
+                "returned_text": txt_tool_returned_str,
+            }
+        )
         messages.append(
             {"role": "user", "content": [
-            {"type": "text", "text": "Search Results: <information>" + txt_tool_returned_str + f"</information> Original question: {args.question}\n{after_text_search_prompt}"}
-        ]})
+                {"type": "text", "text": "Search Results: <information>" + txt_tool_returned_str + f"</information> Original question: {question}\n{after_text_search_prompt}"}
+            ]}
+        )
         assistant_second_reply = generate_response(model, processor, messages)
-        print(f">>> 2nd Response: {assistant_second_reply}")
+        responses.append(assistant_second_reply)
 
-    # Give the final answer
-    else:
-        pass
+    return {
+        "question": question,
+        "image_source": image_source,
+        "responses": responses,
+        "tool_trace": tool_trace,
+        "final_response": responses[-1] if responses else "",
+    }
+
+def main():
+
+    args = parse_args()
+    model_path = args.model_path
+
+    # Load Model
+    model, processor = load_model_and_processor(model_path)
+
+    print(f">>> Question: {args.question}")
+    result = run_mmsearch_demo(model, processor, args.image, args.question)
+    for idx, response in enumerate(result["responses"], start=1):
+        print(f">>> {idx}st Response: {response}" if idx == 1 else f">>> {idx}nd Response: {response}" if idx == 2 else f">>> {idx}rd Response: {response}")
 
 
 if __name__ == "__main__":
