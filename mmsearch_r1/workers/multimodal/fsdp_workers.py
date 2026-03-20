@@ -367,7 +367,12 @@ class ActorRolloutRefWorker(Worker):
                     def postprocess_data(self, data):
                         return data
 
-            rollout = HFRollout(module=self.actor_module_fsdp, config=self.config.rollout)
+            rollout = HFRollout(
+                module=self.actor_module_fsdp,
+                config=self.config.rollout,
+                model_config=self.actor_model_config,
+                device_mesh=rollout_device_mesh,
+            )
             rollout_sharding_manager = BaseShardingManager()
             # TODO: a sharding manager that do nothing?
         elif self.config.rollout.name == 'vllm':
