@@ -30,6 +30,7 @@ fi
 
 echo "[3/5] Installing dependencies..."
 python3 -m pip install -U pip
+python3 -m pip install --no-cache-dir --force-reinstall numpy==1.26.4 pandas==2.2.2 pyarrow==19.0.1
 python3 -m pip install -r requirements.txt
 python3 -m pip install -e ./verl
 
@@ -46,5 +47,6 @@ else
 fi
 
 echo "[5/5] Ready."
+echo "If Colab previously had incompatible numpy/pandas wheels loaded, restart the runtime once before importing datasets/pandas."
 echo "Next: run M0 sanity"
 echo "  bash scripts/run_m0_sanity.sh"

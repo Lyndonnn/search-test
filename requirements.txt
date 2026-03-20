@@ -5,9 +5,9 @@ transformers==4.51.0
 vllm==0.8.2
 tensordict>=0.6.0
 tqdm
-numpy
-pandas
-pyarrow
+numpy==1.26.4
+pandas==2.2.2
+pyarrow==19.0.1
 datasets
 pillow
 sentencepiece

@@ -35,6 +35,8 @@ pip install -e ./verl
 bash scripts/run_m0_sanity.sh
 ```
 
+For Google Colab, if you install or reinstall `numpy` / `pandas` / `pyarrow`, restart the runtime once before importing `datasets` or `pandas`. Otherwise you may hit ABI errors such as `numpy.dtype size changed`. The recommended combination in this repo is `numpy==1.26.4`, `pandas==2.2.2`, `pyarrow==19.0.1`.
+
 The repository includes `mmsearch_r1/data/mini_data.pq` for sanity/debug runs.
 Larger parquet datasets are expected to be prepared locally in veRL format and are not
 bundled with this repo.
