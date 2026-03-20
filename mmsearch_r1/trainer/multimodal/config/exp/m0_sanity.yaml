@@ -22,22 +22,26 @@ actor_rollout_ref:
     disable_monkey_patch: true
   actor:
     optim:
-      lr: 2e-6
+      lr: 5e-7
     ppo_mini_batch_size: 1
     ppo_micro_batch_size_per_gpu: 1
-    grad_clip: 0.0
+    grad_clip: 1.0
     use_multi_turn_response_mask: false
     use_kl_loss: true
     kl_loss_coef: 0.001
     kl_loss_type: low_var_kl
     fsdp_config:
-      model_dtype: fp16
+      model_dtype: bf16
       mixed_precision:
-        param_dtype: fp16
+        param_dtype: bf16
         reduce_dtype: fp32
         buffer_dtype: fp32
   rollout:
     name: hf
+    do_sample: false
+    top_k: 0
+    top_p: 1.0
+    temperature: 1.0
     micro_batch_size_per_gpu: 1
     log_prob_micro_batch_size_per_gpu: 1
     tensor_model_parallel_size: 1
@@ -64,9 +68,9 @@ trainer:
 critic:
   model:
     fsdp_config:
-      model_dtype: fp16
+      model_dtype: bf16
       mixed_precision:
-        param_dtype: fp16
+        param_dtype: bf16
         reduce_dtype: fp32
         buffer_dtype: fp32
     attn_implementation: eager
