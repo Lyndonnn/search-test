@@ -28,9 +28,12 @@
 ## Installation
 Quickstart (Colab or local):
 ```bash
-git clone https://github.com/Lyndonnn/search-test.git
+git clone --recurse-submodules https://github.com/Lyndonnn/search-test.git
 cd search-test
+git submodule sync --recursive
+git submodule update --init --recursive
 pip install -r requirements.txt
+pip install -e ./verl
 bash scripts/run_m0_sanity.sh
 ```
 

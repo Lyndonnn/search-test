@@ -22,18 +22,23 @@ if [[ -z "${MINI_DATA_URL}" ]]; then
 fi
 
 echo "[1/4] Cloning repo..."
-git clone "${REPO_URL}" "${REPO_DIR}"
+git clone --recurse-submodules "${REPO_URL}" "${REPO_DIR}"
 cd "${REPO_DIR}"
 
-echo "[2/4] Installing dependencies..."
+echo "[2/5] Syncing submodules..."
+git submodule sync --recursive
+git submodule update --init --recursive
+
+echo "[3/5] Installing dependencies..."
 python3 -m pip install -U pip
 python3 -m pip install -r requirements.txt
+python3 -m pip install -e ./verl
 
-echo "[3/4] Downloading mini_data..."
+echo "[4/5] Downloading mini_data..."
 mkdir -p "${MINI_DATA_DIR}"
 curl -L "${MINI_DATA_URL}" -o /tmp/mini_data.tar.gz
 tar -xzf /tmp/mini_data.tar.gz -C "${MINI_DATA_DIR}" --strip-components=1
 
-echo "[4/4] Ready."
+echo "[5/5] Ready."
 echo "Next: run M0 sanity"
 echo "  python3 -m mmsearch_r1.trainer.multimodal.main_ppo +exp=m0_sanity"

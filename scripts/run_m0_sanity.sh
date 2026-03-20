@@ -4,6 +4,25 @@ set -euo pipefail
 export HYDRA_FULL_ERROR="${HYDRA_FULL_ERROR:-1}"
 export PYTHONPATH="${PYTHONPATH:-$(pwd)}"
 
+ensure_verl_submodule() {
+  if [[ -f "verl/setup.py" || -f "verl/pyproject.toml" ]]; then
+    return 0
+  fi
+
+  echo "[m0] Initializing verl submodule..."
+  git submodule sync --recursive
+  git submodule update --init --recursive
+
+  if [[ ! -f "verl/setup.py" && ! -f "verl/pyproject.toml" ]]; then
+    echo "[m0] ERROR: verl submodule is still empty."
+    echo "[m0] Run: git submodule update --init --recursive"
+    echo "[m0] Then verify: ls -la verl"
+    exit 1
+  fi
+}
+
+ensure_verl_submodule
+
 if ! python3 - <<'PY'
 import importlib, os, sys
 repo_root = os.getcwd()
@@ -18,7 +37,6 @@ except Exception:
 PY
 then
   echo "[m0] Installing verl from submodule..."
-  git submodule update --init --recursive
   python3 -m pip uninstall -y verl || true
   python3 -m pip install -e ./verl
 fi
