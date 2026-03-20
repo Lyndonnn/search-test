@@ -88,6 +88,20 @@ def choose_question(example: dict[str, Any]) -> str:
 
 
 def choose_answers(example: dict[str, Any]) -> tuple[str, list[str]]:
+    reward_model = example.get("reward_model")
+    if isinstance(reward_model, dict):
+        candidates = normalize_string_list(reward_model.get("ground_truth"))
+        candidates += normalize_string_list(reward_model.get("candidate_answers"))
+        if candidates:
+            ground_truth = candidates[0]
+            alt_answers = []
+            seen = {ground_truth}
+            for ans in candidates[1:]:
+                if ans not in seen:
+                    alt_answers.append(ans)
+                    seen.add(ans)
+            return ground_truth, alt_answers
+
     candidates: list[str] = []
     for key in ("answer", "answers", "label", "labels", "ground_truth"):
         candidates = normalize_string_list(example.get(key))
@@ -128,6 +142,12 @@ def image_to_bytes(value: Any) -> bytes:
 
 
 def choose_image(example: dict[str, Any]) -> bytes:
+    existing_images = example.get("images")
+    if isinstance(existing_images, list) and existing_images:
+        first_image = existing_images[0]
+        if first_image is not None:
+            return image_to_bytes(first_image)
+
     for key in ("image", "img"):
         if key in example and example[key] is not None:
             return image_to_bytes(example[key])
@@ -135,7 +155,7 @@ def choose_image(example: dict[str, Any]) -> bytes:
 
 
 def choose_image_url(example: dict[str, Any]) -> str:
-    for key in ("image_url", "url"):
+    for key in ("image_urls", "image_url", "url"):
         text = normalize_text(example.get(key))
         if text:
             return text
@@ -143,28 +163,79 @@ def choose_image_url(example: dict[str, Any]) -> str:
 
 
 def choose_id(example: dict[str, Any], fallback: int) -> str:
-    for key in ("id", "qid", "question_id", "uid"):
+    for key in ("data_id", "id", "qid", "question_id", "uid"):
         text = normalize_text(example.get(key))
         if text:
             return text
     return str(fallback)
 
 
+def normalize_prompt(prompt: Any) -> list[dict[str, str]]:
+    if isinstance(prompt, list):
+        normalized = []
+        for turn in prompt:
+            if isinstance(turn, dict):
+                role = normalize_text(turn.get("role")) or "user"
+                content = normalize_text(turn.get("content"))
+                normalized.append({"role": role, "content": content})
+            else:
+                content = normalize_text(turn)
+                if content:
+                    normalized.append({"role": "user", "content": content})
+        if normalized:
+            return normalized
+
+    text = normalize_text(prompt)
+    if text:
+        return [{"role": "user", "content": text}]
+    raise ValueError("Unable to normalize prompt into chat format.")
+
+
+def normalize_images_field(value: Any) -> list[dict[str, bytes]]:
+    if isinstance(value, list) and value:
+        normalized = []
+        for image in value:
+            normalized.append({"bytes": image_to_bytes(image)})
+        return normalized
+
+    if value is not None:
+        return [{"bytes": image_to_bytes(value)}]
+
+    return []
+
+
+def normalize_reward_model_field(value: Any, ground_truth: str, candidate_answers: list[str]) -> dict[str, Any]:
+    reward_model = value if isinstance(value, dict) else {}
+    style = normalize_text(reward_model.get("style")) or "rule"
+    out = {
+        "style": style,
+        "ground_truth": ground_truth,
+        "candidate_answers": candidate_answers,
+    }
+    return out
+
+
 def build_record(example: dict[str, Any], idx: int, split: str, data_source: str, image_key: str) -> dict[str, Any]:
-    question = choose_question(example)
     ground_truth, candidate_answers = choose_answers(example)
-    image_bytes = choose_image(example)
     qid = choose_id(example, idx)
 
+    if "prompt" in example and example.get("prompt") is not None:
+        prompt = normalize_prompt(example.get("prompt"))
+    else:
+        question = choose_question(example)
+        prompt = [{"role": "user", "content": question}]
+
+    images = normalize_images_field(example.get(image_key))
+    if not images:
+        images = [{"bytes": choose_image(example)}]
+
+    record_data_source = normalize_text(example.get("data_source")) or data_source
+
     record = {
-        "prompt": [{"role": "user", "content": question}],
-        image_key: [{"bytes": image_bytes}],
-        "reward_model": {
-            "style": "rule",
-            "ground_truth": ground_truth,
-            "candidate_answers": candidate_answers,
-        },
-        "data_source": data_source,
+        "prompt": prompt,
+        image_key: images,
+        "reward_model": normalize_reward_model_field(example.get("reward_model"), ground_truth, candidate_answers),
+        "data_source": record_data_source,
         "image_urls": choose_image_url(example),
         "extra_info": {
             "index": idx,
@@ -172,6 +243,9 @@ def build_record(example: dict[str, Any], idx: int, split: str, data_source: str
             "source_split": split,
         },
     }
+    category = normalize_text(example.get("category"))
+    if category:
+        record["extra_info"]["category"] = category
     return record
 
 
