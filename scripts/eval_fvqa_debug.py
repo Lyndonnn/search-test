@@ -28,6 +28,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--parquet", required=True, help="Path to veRL-format FVQA parquet.")
     parser.add_argument("--model-path", required=True, help="HF model path, e.g. lmms-lab/MMSearch-R1-7B")
     parser.add_argument("--output", required=True, help="Path to save per-sample JSON results.")
+    parser.add_argument(
+        "--search-parquet",
+        default="",
+        help="Optional veRL parquet file used as the offline search corpus. If unset, tools fall back to placeholders.",
+    )
     parser.add_argument("--limit", type=int, default=20, help="Number of rows to evaluate.")
     parser.add_argument("--offset", type=int, default=0, help="Start row offset.")
     return parser.parse_args()
@@ -89,6 +94,8 @@ def ordinal(n: int) -> str:
 
 def main() -> None:
     args = parse_args()
+    if args.search_parquet:
+        os.environ["MMSEARCH_OFFLINE_PARQUET"] = args.search_parquet
     df = pd.read_parquet(args.parquet)
     end = min(len(df), args.offset + args.limit)
     model, processor = load_model_and_processor(args.model_path)

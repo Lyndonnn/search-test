@@ -56,6 +56,7 @@ def parse_args():
     parser.add_argument('--model_path', type=str, required=True, help='The HuggingFace model repo or local path, e.g. Qwen/Qwen2.5-VL-7B-Instruct')
     parser.add_argument('--image', type=str, required=True, help='User image, e.g. URL of local path')
     parser.add_argument('--question', type=str, required=True, help='User question')
+    parser.add_argument('--search-parquet', type=str, default="", help='Optional veRL parquet file used by offline image/text search tools.')
     return parser.parse_args()
 
 
@@ -170,7 +171,7 @@ def run_mmsearch_demo(model, processor, image_source: str, question: str):
             }
         )
 
-        img_tool_returned_web_title_list = [f"Webpage Title {i+1}" for i in range(len(tool_returned_images))]
+        img_tool_returned_web_title_list = tool_stat.get("titles") or [f"Webpage Title {i+1}" for i in range(len(tool_returned_images))]
         base64Frames_image_search_results_list = pil_images_to_base64(tool_returned_images)
 
         messages.append({
@@ -241,6 +242,8 @@ def run_mmsearch_demo(model, processor, image_source: str, question: str):
 def main():
 
     args = parse_args()
+    if args.search_parquet:
+        os.environ["MMSEARCH_OFFLINE_PARQUET"] = args.search_parquet
     model_path = args.model_path
 
     # Load Model
