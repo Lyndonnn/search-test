@@ -1,14 +1,43 @@
 import argparse
-from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
-from qwen_vl_utils import process_vision_info
+import base64
+import os
+import pickle
+import re
+from io import BytesIO
+
+import requests
+from PIL import Image
+from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+
 from mmsearch_r1.utils.tools.image_search import call_image_search
 from mmsearch_r1.utils.tools.text_search import call_text_search
-from io import BytesIO
-import pickle
-import base64
-import re
-import os
-import requests
+
+try:
+    from qwen_vl_utils import process_vision_info
+except ImportError:
+    def _load_image_from_source(image_source: str):
+        if image_source.startswith("data:image/"):
+            header, encoded = image_source.split(",", 1)
+            return Image.open(BytesIO(base64.b64decode(encoded))).convert("RGB")
+        if image_source.startswith("http://") or image_source.startswith("https://"):
+            response = requests.get(image_source, stream=True, timeout=10)
+            response.raise_for_status()
+            return Image.open(BytesIO(response.content)).convert("RGB")
+        with open(image_source, "rb") as f:
+            return Image.open(BytesIO(f.read())).convert("RGB")
+
+    def process_vision_info(messages):
+        image_inputs = []
+        video_inputs = []
+        for message in messages:
+            for item in message.get("content", []):
+                if not isinstance(item, dict):
+                    continue
+                if item.get("type") == "image" and item.get("image") is not None:
+                    image_inputs.append(_load_image_from_source(item["image"]))
+                elif item.get("type") == "video":
+                    video_inputs.append(item.get("video"))
+        return image_inputs, video_inputs
 
 ###
 ### python3 mmsearch_r1/scripts/inference_torch_demo.py --model_path ${MODEL_PATH} --image ${IMAGE_URL} --question ${QUESTION}
