@@ -58,6 +58,22 @@ def as_mapping(value: Any) -> dict[str, Any]:
     return {}
 
 
+def to_jsonable(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, bytes):
+        return f"<{len(value)} bytes>"
+    if isinstance(value, dict):
+        return {str(k): to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [to_jsonable(v) for v in value]
+    if hasattr(value, "tolist"):
+        return to_jsonable(value.tolist())
+    if hasattr(value, "item"):
+        return to_jsonable(value.item())
+    return str(value)
+
+
 def export_image(image_payload: dict[str, Any], path: str) -> None:
     image = Image.open(BytesIO(image_payload["bytes"]))
     image.save(path)
@@ -134,7 +150,7 @@ def main() -> None:
                 "responses": trajectory["responses"],
                 "tool_trace": trajectory["tool_trace"],
             }
-            results.append(result)
+            results.append(to_jsonable(result))
             print(
                 f"[{ordinal(len(results))}/{end - args.offset}] qid={question_id} em={int(em)} subem={int(subem)} searches={search_count}"
             )
