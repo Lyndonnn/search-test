@@ -72,6 +72,20 @@ Important:
 - larger parquet files should be generated or downloaded locally
 - this repo intentionally does not ship the previous 2k parquet pointer because it broke fresh clones
 
+Prepare a small FVQA debug/val parquet first:
+```bash
+python3 scripts/prepare_fvqa_verl.py --split train --limit 100 --out mmsearch_r1/data/fvqa_debug_train.pq
+python3 scripts/prepare_fvqa_verl.py --split test --limit 100 --out mmsearch_r1/data/fvqa_debug_val.pq
+```
+
+The generated parquet follows the veRL-style object columns used by MMSearch-R1:
+- `prompt`: one-turn chat list, e.g. `[{"role": "user", "content": "question text"}]`
+- `images`: list of image payload dicts, e.g. `[{"bytes": ...}]`
+- `reward_model`: dict with `ground_truth`, optional `candidate_answers`, and `style`
+- `data_source`: should contain `mmsearch_r1` for the current reward dispatcher
+- `image_urls`: optional logging field
+- `extra_info`: optional metadata, typically including `index` and `question_id`
+
 ## Train & Eval
 We recommend use the command below for unified training and evaluation:
 ```bash

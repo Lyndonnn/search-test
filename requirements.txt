@@ -7,6 +7,8 @@ tensordict>=0.6.0
 tqdm
 numpy
 pandas
+pyarrow
+datasets
 pillow
 sentencepiece
 accelerate

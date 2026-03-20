@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import os
+from io import BytesIO
+from typing import Any
+
+import pyarrow as pa
+import pyarrow.parquet as pq
+from datasets import load_dataset
+from PIL import Image
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Convert FVQA to a small veRL-format parquet for MMSearch-R1.")
+    parser.add_argument("--split", default="train", choices=["train", "test"], help="FVQA split to convert.")
+    parser.add_argument("--limit", type=int, default=100, help="Number of samples to export.")
+    parser.add_argument("--offset", type=int, default=0, help="Start offset inside the split.")
+    parser.add_argument(
+        "--out",
+        required=True,
+        help="Output parquet path, e.g. mmsearch_r1/data/fvqa_debug_train.pq",
+    )
+    parser.add_argument(
+        "--data-source",
+        default="mmsearch_r1/fvqa",
+        help="data_source value written into the parquet; must contain 'mmsearch_r1' for current reward dispatch.",
+    )
+    parser.add_argument(
+        "--image-key",
+        default="images",
+        help="Column name for images in the output parquet.",
+    )
+    parser.add_argument(
+        "--print-sample",
+        action="store_true",
+        help="Print the first converted sample for inspection.",
+    )
+    return parser.parse_args()
+
+
+def normalize_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="ignore").strip()
+    if isinstance(value, list):
+        parts = [normalize_text(item) for item in value]
+        return " ".join(part for part in parts if part).strip()
+    if isinstance(value, dict):
+        for key in ("content", "text", "question", "prompt", "query", "value"):
+            if key in value:
+                text = normalize_text(value[key])
+                if text:
+                    return text
+        parts = [normalize_text(v) for v in value.values()]
+        return " ".join(part for part in parts if part).strip()
+    return str(value).strip()
+
+
+def normalize_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if isinstance(value, list):
+        items: list[str] = []
+        for item in value:
+            text = normalize_text(item)
+            if text:
+                items.append(text)
+        return items
+    if isinstance(value, dict):
+        text = normalize_text(value)
+        return [text] if text else []
+    text = normalize_text(value)
+    return [text] if text else []
+
+
+def choose_question(example: dict[str, Any]) -> str:
+    for key in ("question", "query", "prompt", "messages"):
+        text = normalize_text(example.get(key))
+        if text:
+            return text
+    raise ValueError(f"Unable to find question text in sample keys: {list(example.keys())}")
+
+
+def choose_answers(example: dict[str, Any]) -> tuple[str, list[str]]:
+    candidates: list[str] = []
+    for key in ("answer", "answers", "label", "labels", "ground_truth"):
+        candidates = normalize_string_list(example.get(key))
+        if candidates:
+            break
+    if not candidates:
+        raise ValueError(f"Unable to find answer text in sample keys: {list(example.keys())}")
+    ground_truth = candidates[0]
+    alt_answers = []
+    seen = {ground_truth}
+    for ans in candidates[1:]:
+        if ans not in seen:
+            alt_answers.append(ans)
+            seen.add(ans)
+    return ground_truth, alt_answers
+
+
+def image_to_bytes(value: Any) -> bytes:
+    if value is None:
+        raise ValueError("FVQA sample does not contain an image.")
+    if isinstance(value, dict):
+        if value.get("bytes") is not None:
+            return value["bytes"]
+        if value.get("path"):
+            with open(value["path"], "rb") as f:
+                return f.read()
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, Image.Image):
+        image = value
+    else:
+        raise TypeError(f"Unsupported image type: {type(value)}")
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    buf = BytesIO()
+    image.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def choose_image(example: dict[str, Any]) -> bytes:
+    for key in ("image", "img"):
+        if key in example and example[key] is not None:
+            return image_to_bytes(example[key])
+    raise ValueError(f"Unable to find image in sample keys: {list(example.keys())}")
+
+
+def choose_image_url(example: dict[str, Any]) -> str:
+    for key in ("image_url", "url"):
+        text = normalize_text(example.get(key))
+        if text:
+            return text
+    return ""
+
+
+def choose_id(example: dict[str, Any], fallback: int) -> str:
+    for key in ("id", "qid", "question_id", "uid"):
+        text = normalize_text(example.get(key))
+        if text:
+            return text
+    return str(fallback)
+
+
+def build_record(example: dict[str, Any], idx: int, split: str, data_source: str, image_key: str) -> dict[str, Any]:
+    question = choose_question(example)
+    ground_truth, candidate_answers = choose_answers(example)
+    image_bytes = choose_image(example)
+    qid = choose_id(example, idx)
+
+    record = {
+        "prompt": [{"role": "user", "content": question}],
+        image_key: [{"bytes": image_bytes}],
+        "reward_model": {
+            "style": "rule",
+            "ground_truth": ground_truth,
+            "candidate_answers": candidate_answers,
+        },
+        "data_source": data_source,
+        "image_urls": choose_image_url(example),
+        "extra_info": {
+            "index": idx,
+            "question_id": qid,
+            "source_split": split,
+        },
+    }
+    return record
+
+
+def main() -> None:
+    args = parse_args()
+    hf_split = f"{args.split}[{args.offset}:{args.offset + args.limit}]"
+    dataset = load_dataset("lmms-lab/FVQA", split=hf_split)
+
+    records = [
+        build_record(example, idx=args.offset + i, split=args.split, data_source=args.data_source, image_key=args.image_key)
+        for i, example in enumerate(dataset)
+    ]
+
+    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+    table = pa.Table.from_pylist(records)
+    pq.write_table(table, args.out)
+
+    print(f"Saved {len(records)} records to {args.out}")
+    if args.print_sample and records:
+        sample = dict(records[0])
+        sample[args.image_key] = [{"bytes": f"<{len(records[0][args.image_key][0]['bytes'])} bytes>"}]
+        print(json.dumps(sample, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()
