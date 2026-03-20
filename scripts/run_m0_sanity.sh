@@ -4,6 +4,12 @@ set -euo pipefail
 export HYDRA_FULL_ERROR="${HYDRA_FULL_ERROR:-1}"
 export PYTHONPATH="${PYTHONPATH:-$(pwd)}"
 
+if [[ ! -f "verl/setup.py" && ! -f "verl/pyproject.toml" ]]; then
+  echo "[m0] ERROR: vendored verl is missing."
+  echo "[m0] Verify the repository clone completed successfully and that ./verl exists."
+  exit 1
+fi
+
 if ! python3 - <<'PY'
 import importlib, os, sys
 repo_root = os.getcwd()
@@ -17,8 +23,7 @@ except Exception:
     raise SystemExit(1)
 PY
 then
-  echo "[m0] Installing verl from submodule..."
-  git submodule update --init --recursive
+  echo "[m0] Installing vendored verl..."
   python3 -m pip uninstall -y verl || true
   python3 -m pip install -e ./verl
 fi

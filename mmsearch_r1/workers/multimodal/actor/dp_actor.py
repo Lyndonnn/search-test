@@ -357,3 +357,17 @@ class MmDataParallelPPOActor(DataParallelPPOActor):
             append_to_dict(metrics, data)
         self.actor_optimizer.zero_grad()
         return metrics
+
+    def _optimizer_step(self):
+        # FSDP grad clipping can crash on some Colab CUDA stacks; allow disabling via config.
+        grad_clip = getattr(self.config, "grad_clip", None)
+        if grad_clip is None or grad_clip <= 0:
+            self.actor_optimizer.step()
+            try:
+                device = next(self.actor_module.parameters()).device
+            except StopIteration:
+                device = torch.device("cpu")
+            return torch.tensor(0.0, device=device)
+        grad_norm = self.actor_module.clip_grad_norm_(max_norm=grad_clip)
+        self.actor_optimizer.step()
+        return grad_norm
