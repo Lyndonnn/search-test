@@ -37,6 +37,7 @@ bash scripts/run_m0_sanity.sh
 
 For Google Colab, the most reliable path is to use an isolated virtualenv instead of Colab's preinstalled Python packages:
 ```bash
+# if you are already inside the cloned repo:
 bash scripts/bootstrap_colab.sh
 source .venv-colab/bin/activate
 python -c "import numpy, pandas, pyarrow; print(numpy.__version__, pandas.__version__, pyarrow.__version__)"
@@ -84,6 +85,11 @@ Prepare a small FVQA debug/val parquet first:
 ```bash
 python3 scripts/prepare_fvqa_verl.py --split train --limit 100 --out mmsearch_r1/data/fvqa_debug_train.pq
 python3 scripts/prepare_fvqa_verl.py --split test --limit 100 --out mmsearch_r1/data/fvqa_debug_val.pq
+```
+
+If you are using Colab with the isolated virtualenv, avoid importing `pandas` in the notebook kernel directly. Instead, run helper scripts through the virtualenv:
+```bash
+source .venv-colab/bin/activate && python scripts/export_verl_sample.py --parquet mmsearch_r1/data/fvqa_debug_val.pq --index 0 --output-dir outputs/fvqa_demo
 ```
 
 The generated parquet follows the veRL-style object columns used by MMSearch-R1:
