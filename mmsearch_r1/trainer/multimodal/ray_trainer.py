@@ -1236,25 +1236,31 @@ class RayPPOTrainer:
                             )
                     
                     # update critic
-                    print(
-                        f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [Global Step: {self.global_steps}] Update Actor Starts ..."
-                    )
                     if self.use_critic:
+                        print(
+                            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [Global Step: {self.global_steps}] Update Critic Starts ..."
+                        )
                         with _timer('update_critic', timing_raw):
                             critic_output = self.critic_wg.update_critic(batch)
                         critic_output_metrics = reduce_metrics(critic_output.meta_info['metrics'])
                         metrics.update(critic_output_metrics)
-                    print(
-                        f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [Global Step: {self.global_steps}] Update Actor Ends ..."
-                    )
+                        print(
+                            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [Global Step: {self.global_steps}] Update Critic Ends ..."
+                        )
 
                     # implement critic warmup
                     if self.config.trainer.critic_warmup <= self.global_steps:
                         # update actor
+                        print(
+                            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [Global Step: {self.global_steps}] Update Actor Starts ..."
+                        )
                         with _timer('update_actor', timing_raw):
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
                         metrics.update(actor_output_metrics)
+                        print(
+                            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [Global Step: {self.global_steps}] Update Actor Ends ..."
+                        )
 
                     # validate
                     if (

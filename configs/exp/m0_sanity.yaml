@@ -57,6 +57,7 @@ trainer:
   nnodes: 1
   total_epochs: 1
   total_training_steps: 5
+  critic_warmup: 999999
   save_freq: 1000000
   test_freq: 1000000
   val_before_train: false
