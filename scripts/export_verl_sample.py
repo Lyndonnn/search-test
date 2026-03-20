@@ -2,6 +2,7 @@
 import argparse
 import os
 from io import BytesIO
+from typing import Any
 
 import pandas as pd
 from PIL import Image
@@ -16,6 +17,31 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def as_sequence(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if hasattr(value, "tolist"):
+        converted = value.tolist()
+        if isinstance(converted, list):
+            return converted
+        return [converted]
+    return [value]
+
+
+def as_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, "item"):
+        maybe = value.item()
+        if isinstance(maybe, dict):
+            return maybe
+    return {}
+
+
 def main() -> None:
     args = parse_args()
     df = pd.read_parquet(args.parquet)
@@ -26,22 +52,24 @@ def main() -> None:
 
     row = df.iloc[args.index]
 
-    prompt = row["prompt"]
-    if isinstance(prompt, list) and prompt:
+    prompt = as_sequence(row["prompt"])
+    if prompt and isinstance(prompt[0], dict):
         question = prompt[0].get("content", "")
     else:
         question = str(prompt)
 
-    reward_model = row.get("reward_model", {})
+    reward_model = as_mapping(row.get("reward_model", {}))
     ground_truth = reward_model.get("ground_truth", "")
     candidate_answers = reward_model.get("candidate_answers", [])
-    extra_info = row.get("extra_info", {})
-    question_id = extra_info.get("question_id", args.index) if isinstance(extra_info, dict) else args.index
+    extra_info = as_mapping(row.get("extra_info", {}))
+    question_id = extra_info.get("question_id", args.index)
 
-    images = row[args.image_key]
-    if not isinstance(images, list) or not images:
+    images = as_sequence(row[args.image_key])
+    if not images:
         raise ValueError(f"No images found under column '{args.image_key}'")
     image_payload = images[0]
+    if not isinstance(image_payload, dict) and hasattr(image_payload, "item"):
+        image_payload = image_payload.item()
     if not isinstance(image_payload, dict) or "bytes" not in image_payload:
         raise ValueError(f"Unsupported image payload: {type(image_payload)}")
 
