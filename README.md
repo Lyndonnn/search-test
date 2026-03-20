@@ -35,7 +35,13 @@ pip install -e ./verl
 bash scripts/run_m0_sanity.sh
 ```
 
-For Google Colab, if you install or reinstall `numpy` / `pandas` / `pyarrow`, restart the runtime once before importing `datasets` or `pandas`. Otherwise you may hit ABI errors such as `numpy.dtype size changed`. The recommended combination in this repo is `numpy==1.26.4`, `pandas==2.2.2`, `pyarrow==19.0.1`.
+For Google Colab, the most reliable path is to use an isolated virtualenv instead of Colab's preinstalled Python packages:
+```bash
+bash scripts/bootstrap_colab.sh
+source .venv-colab/bin/activate
+python -c "import numpy, pandas, pyarrow; print(numpy.__version__, pandas.__version__, pyarrow.__version__)"
+```
+This avoids dependency warnings from preinstalled packages such as `jax`, `opencv`, or `shap`. The recommended combination in this repo is `numpy==1.26.4`, `pandas==2.2.2`, `pyarrow==19.0.1`.
 
 The repository includes `mmsearch_r1/data/mini_data.pq` for sanity/debug runs.
 Larger parquet datasets are expected to be prepared locally in veRL format and are not

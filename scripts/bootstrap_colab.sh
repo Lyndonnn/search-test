@@ -8,10 +8,12 @@ set -euo pipefail
 # Optional:
 #   REPO_DIR=search-test bash scripts/bootstrap_colab.sh
 #   MINI_DATA_URL=https://.../mini_data.tar.gz bash scripts/bootstrap_colab.sh
+#   VENV_DIR=.venv-colab bash scripts/bootstrap_colab.sh
 
 REPO_URL="${REPO_URL:-https://github.com/Lyndonnn/search-test.git}"
 REPO_DIR="${REPO_DIR:-mmsearch-zoom-agent}"
 MINI_DATA_URL="${MINI_DATA_URL:-}"
+VENV_DIR="${VENV_DIR:-.venv-colab}"
 
 if [[ -z "${REPO_URL}" ]]; then
   echo "ERROR: Set REPO_URL to your repo clone URL."
@@ -28,11 +30,13 @@ if [[ ! -f "verl/setup.py" && ! -f "verl/pyproject.toml" ]]; then
   exit 1
 fi
 
-echo "[3/5] Installing dependencies..."
-python3 -m pip install -U pip
-python3 -m pip install --no-cache-dir --force-reinstall numpy==1.26.4 pandas==2.2.2 pyarrow==19.0.1
-python3 -m pip install -r requirements.txt
-python3 -m pip install -e ./verl
+echo "[3/5] Creating isolated virtualenv..."
+python3 -m venv "${VENV_DIR}"
+source "${VENV_DIR}/bin/activate"
+python -m pip install -U pip
+python -m pip install --no-cache-dir --force-reinstall numpy==1.26.4 pandas==2.2.2 pyarrow==19.0.1
+python -m pip install -r requirements.txt
+python -m pip install -e ./verl
 
 echo "[4/5] Preparing sanity data..."
 if [[ -f "mmsearch_r1/data/mini_data.pq" ]]; then
@@ -47,6 +51,8 @@ else
 fi
 
 echo "[5/5] Ready."
-echo "If Colab previously had incompatible numpy/pandas wheels loaded, restart the runtime once before importing datasets/pandas."
+echo "Use the isolated interpreter to avoid Colab preinstalled package conflicts:"
+echo "  source ${VENV_DIR}/bin/activate"
+echo "  python -c \"import numpy, pandas, pyarrow; print(numpy.__version__, pandas.__version__, pyarrow.__version__)\""
 echo "Next: run M0 sanity"
-echo "  bash scripts/run_m0_sanity.sh"
+echo "  source ${VENV_DIR}/bin/activate && bash scripts/run_m0_sanity.sh"
