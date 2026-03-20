@@ -3,11 +3,16 @@ import base64
 import os
 import pickle
 import re
+import sys
 from io import BytesIO
 
 import requests
 from PIL import Image
 from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 from mmsearch_r1.utils.tools.image_search import call_image_search
 from mmsearch_r1.utils.tools.text_search import call_text_search
