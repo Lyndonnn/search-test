@@ -19,12 +19,14 @@ if [[ -z "${REPO_URL}" ]]; then
 fi
 
 echo "[1/5] Cloning repo..."
-git clone --recurse-submodules "${REPO_URL}" "${REPO_DIR}"
+git clone "${REPO_URL}" "${REPO_DIR}"
 cd "${REPO_DIR}"
 
-echo "[2/5] Syncing submodules..."
-git submodule sync --recursive
-git submodule update --init --recursive
+echo "[2/5] Checking vendored verl..."
+if [[ ! -f "verl/setup.py" && ! -f "verl/pyproject.toml" ]]; then
+  echo "ERROR: ./verl is missing from the repository."
+  exit 1
+fi
 
 echo "[3/5] Installing dependencies..."
 python3 -m pip install -U pip
