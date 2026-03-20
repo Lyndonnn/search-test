@@ -2,12 +2,17 @@
 import argparse
 import json
 import os
+import sys
 from io import BytesIO
 from tempfile import TemporaryDirectory
 from typing import Any
 
 import pandas as pd
 from PIL import Image
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 from mmsearch_r1.scripts.inference_torch_demo import load_model_and_processor, run_mmsearch_demo
 from mmsearch_r1.utils.reward_score_mm.mmsearch_r1_score import (
