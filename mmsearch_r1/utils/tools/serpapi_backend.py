@@ -7,6 +7,14 @@ from PIL import Image
 
 
 SERPAPI_ENDPOINT = "https://serpapi.com/search"
+DEFAULT_HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+    ),
+    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 
 def get_serpapi_key() -> str:
@@ -36,7 +44,9 @@ def _download_image(url: str) -> Optional[Image.Image]:
     if not url:
         return None
     try:
-        response = requests.get(url, timeout=20)
+        headers = dict(DEFAULT_HTTP_HEADERS)
+        headers["Referer"] = url
+        response = requests.get(url, timeout=20, headers=headers)
         response.raise_for_status()
         return Image.open(BytesIO(response.content)).convert("RGB")
     except Exception:

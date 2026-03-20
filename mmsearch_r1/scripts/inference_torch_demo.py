@@ -17,6 +17,23 @@ if REPO_ROOT not in sys.path:
 from mmsearch_r1.utils.tools.image_search import call_image_search
 from mmsearch_r1.utils.tools.text_search import call_text_search
 
+DEFAULT_HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+    ),
+    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+def fetch_remote_bytes(url: str) -> bytes:
+    headers = dict(DEFAULT_HTTP_HEADERS)
+    headers["Referer"] = url
+    response = requests.get(url, stream=True, timeout=20, headers=headers)
+    response.raise_for_status()
+    return response.content
+
 try:
     from qwen_vl_utils import process_vision_info
 except ImportError:
@@ -25,9 +42,7 @@ except ImportError:
             header, encoded = image_source.split(",", 1)
             return Image.open(BytesIO(base64.b64decode(encoded))).convert("RGB")
         if image_source.startswith("http://") or image_source.startswith("https://"):
-            response = requests.get(image_source, stream=True, timeout=10)
-            response.raise_for_status()
-            return Image.open(BytesIO(response.content)).convert("RGB")
+            return Image.open(BytesIO(fetch_remote_bytes(image_source))).convert("RGB")
         with open(image_source, "rb") as f:
             return Image.open(BytesIO(f.read())).convert("RGB")
 
@@ -105,9 +120,7 @@ def extract_last_text_search(text: str):
 def load_image_as_base64(image_source):
     try:
         if image_source.startswith("http://") or image_source.startswith("https://"):
-            response = requests.get(image_source, stream=True, timeout=10)
-            response.raise_for_status()
-            image_bytes = response.content
+            image_bytes = fetch_remote_bytes(image_source)
         else:
             if not os.path.exists(image_source):
                 raise FileNotFoundError(f"File not found: {image_source}")

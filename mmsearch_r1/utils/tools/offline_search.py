@@ -6,7 +6,18 @@ from io import BytesIO
 from typing import Any, Optional
 
 import pandas as pd
+import requests
 from PIL import Image
+
+
+DEFAULT_HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+    ),
+    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 
 def _as_sequence(value: Any) -> list[Any]:
@@ -73,6 +84,12 @@ def _tokenize(text: str) -> list[str]:
 def _load_image_from_source(image_source: str) -> Image.Image:
     if image_source.startswith("file://"):
         image_source = image_source[7:]
+    if image_source.startswith("http://") or image_source.startswith("https://"):
+        headers = dict(DEFAULT_HTTP_HEADERS)
+        headers["Referer"] = image_source
+        response = requests.get(image_source, timeout=20, headers=headers)
+        response.raise_for_status()
+        return Image.open(BytesIO(response.content)).convert("RGB")
     with open(image_source, "rb") as f:
         return Image.open(BytesIO(f.read())).convert("RGB")
 
