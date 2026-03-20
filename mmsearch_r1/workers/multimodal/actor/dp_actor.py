@@ -21,7 +21,6 @@ from typing import Iterable, Tuple
 import numpy as np
 import torch
 import verl.utils.torch_functional as verl_F
-from flash_attn.bert_padding import index_first_axis, pad_input, rearrange, unpad_input
 from torch import nn
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from verl import DataProto
@@ -37,6 +36,17 @@ from mmsearch_r1.trainer.multimodal.core_algos import compute_policy_loss
 from mmsearch_r1.utils.torch_functional import logprobs_from_logits
 
 __all__ = ['MmDataParallelPPOActor']
+
+try:
+    from flash_attn.bert_padding import index_first_axis, pad_input, rearrange, unpad_input
+
+    _FLASH_ATTN_AVAILABLE = True
+except ImportError:
+    index_first_axis = None
+    pad_input = None
+    rearrange = None
+    unpad_input = None
+    _FLASH_ATTN_AVAILABLE = False
 
 
 class MmDataParallelPPOActor(DataParallelPPOActor):
@@ -75,6 +85,11 @@ class MmDataParallelPPOActor(DataParallelPPOActor):
                 position_ids = position_ids.transpose(0, 1)  # (bsz, 3, seqlen) -> (3, bsz, seqlen)
 
             if self.use_remove_padding:
+                if not _FLASH_ATTN_AVAILABLE:
+                    raise ImportError(
+                        "flash_attn is required when use_remove_padding=True. "
+                        "Install flash-attn or set actor_rollout_ref.model.use_remove_padding=False."
+                    )
                 input_ids_rmpad, indices, *_ = unpad_input(
                     input_ids.unsqueeze(-1), attention_mask
                 )  # input_ids_rmpad (total_nnz, ...)
