@@ -114,6 +114,15 @@ def hf_processor(name_or_path, **kwargs):
     """
     from transformers import AutoConfig, AutoProcessor, PreTrainedTokenizerBase
 
+    def _bind_qwen_rope_fallback(processor):
+        # Newer transformers Qwen2.5-VL classes may not expose get_rope_index on
+        # the model class anymore. MMSearch-R1 still needs a processor-level rope
+        # helper, so bind the local compatibility implementation instead.
+        from verl.models.transformers.qwen2_vl import get_rope_index as _compat_get_rope_index
+
+        processor.get_rope_index = types.MethodType(_compat_get_rope_index, processor)
+        return processor
+
     try:
         processor = AutoProcessor.from_pretrained(name_or_path, **kwargs)
         # In newer transformers, AutoProcessor may legitimately fall back to a
@@ -133,9 +142,12 @@ def hf_processor(name_or_path, **kwargs):
 
                 model_class = Qwen2VLModel
             case "Qwen2_5_VLProcessor":
-                from transformers.models.qwen2_5_vl import Qwen2_5_VLModel
+                try:
+                    from transformers.models.qwen2_5_vl import Qwen2_5_VLModel
 
-                model_class = Qwen2_5_VLModel
+                    model_class = Qwen2_5_VLModel
+                except Exception:
+                    model_class = None
             case "Qwen3VLProcessor":
                 from transformers.models.qwen3_vl import Qwen3VLModel
 
@@ -149,7 +161,14 @@ def hf_processor(name_or_path, **kwargs):
             case _:
                 raise ValueError(f"Unsupported processor type: {processor.__class__.__name__}")
 
-        if model_class is not None:
+        if processor.__class__.__name__ == "Qwen2_5_VLProcessor":
+            if model_class is not None and hasattr(model_class, "get_rope_index"):
+                processor.get_rope_index = types.MethodType(model_class.get_rope_index, processor)
+            else:
+                processor = _bind_qwen_rope_fallback(processor)
+            if model_class is not None and hasattr(model_class, "get_vision_position_ids"):
+                processor.get_vision_position_ids = types.MethodType(model_class.get_vision_position_ids, processor)
+        elif model_class is not None:
             processor.get_rope_index = types.MethodType(model_class.get_rope_index, processor)
             if hasattr(model_class, "get_vision_position_ids"):
                 processor.get_vision_position_ids = types.MethodType(model_class.get_vision_position_ids, processor)
