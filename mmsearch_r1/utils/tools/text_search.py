@@ -1,7 +1,14 @@
 from mmsearch_r1.utils.tools.offline_search import format_text_results, get_offline_index
+from mmsearch_r1.utils.tools.serpapi_backend import has_serpapi, search_google
 
 
 def call_text_search(text_query: str):
+    if has_serpapi():
+        try:
+            return search_google(text_query, num_results=3)
+        except Exception as exc:
+            print(f"[Warning] SerpApi text search failed, falling back to offline/fake search: {exc}")
+
     index = get_offline_index()
     if index is not None:
         results = index.search_text(text_query, topk=3)

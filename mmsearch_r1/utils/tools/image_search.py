@@ -2,9 +2,16 @@ from PIL import Image
 import numpy as np
 
 from mmsearch_r1.utils.tools.offline_search import format_image_results, get_offline_index
+from mmsearch_r1.utils.tools.serpapi_backend import has_serpapi, search_google_lens
 
 
 def call_image_search(image_url: str):
+    if has_serpapi():
+        try:
+            return search_google_lens(image_url, num_results=3)
+        except Exception as exc:
+            print(f"[Warning] SerpApi image search failed, falling back to offline/fake search: {exc}")
+
     index = get_offline_index()
     if index is not None:
         results = index.search_image(image_url, topk=3)

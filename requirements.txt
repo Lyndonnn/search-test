@@ -10,6 +10,7 @@ pandas==2.2.2
 pyarrow==19.0.1
 datasets
 pillow
+requests
 qwen_vl_utils
 sentencepiece
 accelerate
