@@ -25,6 +25,7 @@ actor_rollout_ref:
       lr: 2e-6
     ppo_mini_batch_size: 1
     ppo_micro_batch_size_per_gpu: 1
+    grad_clip: 0.0
     use_multi_turn_response_mask: false
     use_kl_loss: true
     kl_loss_coef: 0.001
