@@ -64,7 +64,19 @@ def normalize_string_list(value: Any) -> list[str]:
     if value is None:
         return []
     if isinstance(value, str):
-        return [value.strip()] if value.strip() else []
+        text = value.strip()
+        if not text:
+            return []
+        if text == "[]":
+            return []
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                parsed = json.loads(text)
+            except Exception:
+                parsed = None
+            if isinstance(parsed, list):
+                return normalize_string_list(parsed)
+        return [text]
     if isinstance(value, list):
         items: list[str] = []
         for item in value:
