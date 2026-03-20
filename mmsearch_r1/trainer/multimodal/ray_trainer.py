@@ -86,6 +86,7 @@ def compute_data_metrics(batch, use_critic=True, tokenizer=None):
     
     for idx, response in enumerate(responses_after_first_user_prompt):
         _resp_length = response.size(0)
+        response_non_assistant = response
         if 'multi_turn_response_mask' in batch.batch:
             _resp_mask = batch.batch['multi_turn_response_mask'][idx][-_resp_length:]
             response, response_non_assistant = response[_resp_mask == 1], response[_resp_mask < 0.1]
@@ -720,6 +721,7 @@ class RayPPOTrainer:
             responses_after_first_user_prompt = test_batch.batch['responses']
             for idx, response in enumerate(responses_after_first_user_prompt):
                 _resp_length = response.size(0)
+                response_non_assistant = response
                 if 'multi_turn_response_mask' in test_batch.batch:
                     _resp_mask = test_batch.batch['multi_turn_response_mask'][idx][-_resp_length:]
                     response, response_non_assistant = response[_resp_mask == 1], response[_resp_mask < 0.1]
