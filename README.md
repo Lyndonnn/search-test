@@ -37,6 +37,10 @@ pip install -e ./verl
 bash scripts/run_m0_sanity.sh
 ```
 
+The repository includes `mmsearch_r1/data/mini_data.pq` for sanity/debug runs.
+Larger parquet datasets are expected to be prepared locally in veRL format and are not
+bundled with this repo.
+
 ```bash
 # Clone this repo with submodules
 git clone --recurse-submodules https://github.com/EvolvingLMMs-Lab/multimodal-search-r1.git
@@ -64,6 +68,11 @@ We draw inspiration from open-sourced implementation [OpenDeepResearcher](https:
 
 ## Data Construction
 Both the training and validation datasets follow the format defined by veRL. We provide an example dataset under directory `mmsearch_r1/data` as a reference to help you prepare your own training data.
+
+Important:
+- `mmsearch_r1/data/mini_data.pq` is included for sanity checks
+- larger parquet files should be generated or downloaded locally
+- this repo intentionally does not ship the previous 2k parquet pointer because it broke fresh clones
 
 ## Train & Eval
 We recommend use the command below for unified training and evaluation:
