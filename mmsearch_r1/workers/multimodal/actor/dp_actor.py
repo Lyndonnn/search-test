@@ -368,6 +368,22 @@ class MmDataParallelPPOActor(DataParallelPPOActor):
             except StopIteration:
                 device = torch.device("cpu")
             return torch.tensor(0.0, device=device)
+        if isinstance(self.actor_module, FSDP):
+            world_size = 1
+            if torch.distributed.is_available() and torch.distributed.is_initialized():
+                world_size = torch.distributed.get_world_size()
+            if world_size == 1:
+                params = [p for p in self.actor_module.parameters() if p.grad is not None]
+                if params:
+                    grad_norm = torch.nn.utils.clip_grad_norm_(
+                        params, max_norm=grad_clip, error_if_nonfinite=False
+                    )
+                else:
+                    device = next(self.actor_module.parameters()).device
+                    grad_norm = torch.tensor(0.0, device=device)
+                self.actor_optimizer.step()
+                return grad_norm
+
         grad_norm = self.actor_module.clip_grad_norm_(max_norm=grad_clip)
         self.actor_optimizer.step()
         return grad_norm
