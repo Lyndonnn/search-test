@@ -155,6 +155,41 @@ def _extract_numeric_list(value: Any) -> List[float]:
     return [float(m) for m in matches]
 
 
+def _bbox_from_region_dict(region: Any, image_size: tuple[int, int]) -> Optional[List[int]]:
+    if not isinstance(region, dict):
+        return None
+
+    point_candidates = []
+    for key in ("tl", "tr", "bl", "br", "lt", "rt", "lb", "rb"):
+        point = region.get(key)
+        if isinstance(point, dict) and "x" in point and "y" in point:
+            try:
+                point_candidates.append((float(point["x"]), float(point["y"])))
+            except Exception:
+                pass
+
+    if point_candidates:
+        xs = [point[0] for point in point_candidates]
+        ys = [point[1] for point in point_candidates]
+        return finalize_bbox([min(xs), min(ys), max(xs), max(ys)], image_size, "xyxy")
+
+    if {"x", "y", "width", "height"}.issubset(region):
+        return finalize_bbox(
+            [region["x"], region["y"], region["width"], region["height"]],
+            image_size,
+            "xywh",
+        )
+    if {"x", "y", "w", "h"}.issubset(region):
+        return finalize_bbox([region["x"], region["y"], region["w"], region["h"]], image_size, "xywh")
+    if {"left", "top", "right", "bottom"}.issubset(region):
+        return finalize_bbox(
+            [region["left"], region["top"], region["right"], region["bottom"]],
+            image_size,
+            "xyxy",
+        )
+    return None
+
+
 def parse_bbox(value: Any, image_size: tuple[int, int], bbox_format: str) -> Optional[List[int]]:
     width, height = image_size
 
@@ -172,6 +207,9 @@ def parse_bbox(value: Any, image_size: tuple[int, int], bbox_format: str) -> Opt
 
     if isinstance(parsed_value, dict):
         keys = {k.lower(): v for k, v in parsed_value.items()}
+        region_box = _bbox_from_region_dict(keys.get("region"), image_size)
+        if region_box is not None:
+            return region_box
         if {"x1", "y1", "x2", "y2"}.issubset(keys):
             coords = [keys["x1"], keys["y1"], keys["x2"], keys["y2"]]
             return finalize_bbox(coords, image_size, "xyxy")
