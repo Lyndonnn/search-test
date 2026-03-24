@@ -44,6 +44,20 @@ python -c "import numpy, pandas, pyarrow; print(numpy.__version__, pandas.__vers
 ```
 This avoids dependency warnings from preinstalled packages such as `jax`, `opencv`, or `shap`. The recommended combination in this repo is `numpy==1.26.4`, `pandas==2.2.2`, `pyarrow==19.0.1`.
 
+If you want a one-shot Colab setup for the current research stage, use:
+```bash
+from google.colab import drive
+drive.mount('/content/drive')
+```
+```bash
+%cd /content
+!rm -rf search-test
+!git clone https://github.com/Lyndonnn/search-test.git
+%cd search-test
+!PREPARE_FVQA_DEBUG=1 bash scripts/bootstrap_colab.sh
+```
+This creates `.venv-colab`, installs `flash-attn` inside the venv, pins the data stack, installs `./verl`, and prepares `mmsearch_r1/data/fvqa_debug_train.pq` plus `mmsearch_r1/data/fvqa_debug_val.pq`.
+
 The repository includes `mmsearch_r1/data/mini_data.pq` for sanity/debug runs.
 Larger parquet datasets are expected to be prepared locally in veRL format and are not
 bundled with this repo.
