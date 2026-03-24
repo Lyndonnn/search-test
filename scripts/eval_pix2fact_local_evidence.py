@@ -320,6 +320,22 @@ def summarize(results: List[Dict[str, Any]], key: str) -> Dict[str, Any]:
     }
 
 
+def flatten_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
+    flat: Dict[str, Any] = {}
+    for prefix in ("whole", "oracle_crop"):
+        block = summary.get(prefix, {})
+        flat[f"{prefix}.count"] = block.get("count", 0)
+        flat[f"{prefix}.em"] = block.get("em", 0.0)
+        flat[f"{prefix}.subem"] = block.get("subem", 0.0)
+        flat[f"{prefix}.avg_searches"] = block.get("avg_searches", 0.0)
+
+    delta = summary.get("paired_delta", {})
+    flat["paired_delta.count"] = delta.get("count", 0)
+    flat["paired_delta.crop_minus_whole_em"] = delta.get("crop_minus_whole_em", 0.0)
+    flat["paired_delta.crop_minus_whole_subem"] = delta.get("crop_minus_whole_subem", 0.0)
+    return flat
+
+
 def main() -> None:
     args = parse_args()
     if args.search_parquet:
@@ -406,6 +422,11 @@ def main() -> None:
         summary["whole"] = summarize(rows, "whole")
     if args.mode in {"oracle_crop", "both"}:
         summary["oracle_crop"] = summarize(rows, "oracle_crop")
+    summary["paired_delta"] = {
+        "count": 0,
+        "crop_minus_whole_em": 0.0,
+        "crop_minus_whole_subem": 0.0,
+    }
     if args.mode == "both":
         paired = [
             row for row in rows
@@ -428,6 +449,7 @@ def main() -> None:
 
     print(f"Saved results to {args.output}")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
+    print(json.dumps(flatten_summary(summary), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
