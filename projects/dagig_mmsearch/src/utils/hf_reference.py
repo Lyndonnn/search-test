@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -56,7 +57,7 @@ class HFReferencePolicy:
 
         dtype = self._torch_dtype(torch)
         tokenizer_kwargs = {
-            "cache_dir": self.cfg.cache_dir,
+            "cache_dir": self.cfg.cache_dir or os.environ.get("DAGIG_MODEL_CACHE") or os.environ.get("HF_HOME"),
             "trust_remote_code": self.cfg.trust_remote_code,
         }
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(self.cfg.name_or_path, **tokenizer_kwargs)
@@ -64,7 +65,7 @@ class HFReferencePolicy:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
         model_kwargs: dict[str, Any] = {
-            "cache_dir": self.cfg.cache_dir,
+            "cache_dir": self.cfg.cache_dir or os.environ.get("DAGIG_MODEL_CACHE") or os.environ.get("HF_HOME"),
             "torch_dtype": dtype,
             "device_map": self.cfg.device_map,
             "trust_remote_code": self.cfg.trust_remote_code,
@@ -128,4 +129,3 @@ def load_reference_policy_from_config(config: dict[str, Any]) -> HFReferencePoli
             max_context_tokens=int(data_cfg.get("max_prompt_length", 3072)),
         )
     )
-

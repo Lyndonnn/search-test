@@ -78,6 +78,7 @@ After cloning on AutoDL, source the environment helper so model downloads and lo
 cd /root/search-test
 source projects/dagig_mmsearch/scripts/autodl_env.sh
 make autodl_check
+make hf_probe
 ```
 
 Then run the current CPU-safe smoke:
@@ -91,9 +92,16 @@ To test real frozen-reference logprob scoring with Qwen2.5-VL-3B on the A800:
 
 ```bash
 source projects/dagig_mmsearch/scripts/autodl_env.sh
+make hf_probe
 make reference_logprob_smoke
 ```
 
-This downloads `Qwen/Qwen2.5-VL-3B-Instruct` into `/root/autodl-tmp/dagig/hf_cache` when running on AutoDL. It scores a 2-sample DAG-IG batch with `cf_samples=1` by default, writing `results/dagig_lite/reference_logprob_smoke.jsonl` and `paper_artifacts/tables/reference_logprob_smoke.csv`.
+On AutoDL, `autodl_env.sh` defaults to `HF_ENDPOINT=https://hf-mirror.com` and downloads `Qwen/Qwen2.5-VL-3B-Instruct` into `/root/autodl-tmp/dagig/hf_cache`. Override the endpoint when needed:
+
+```bash
+export HF_ENDPOINT=https://huggingface.co
+```
+
+The reference smoke scores a 2-sample DAG-IG batch with `cf_samples=1` by default, writing `results/dagig_lite/reference_logprob_smoke.jsonl` and `paper_artifacts/tables/reference_logprob_smoke.csv`.
 
 The current implementation is intentionally CPU-smoke-testable. A800/A100 training should replace the toy logprob scorer with a frozen Qwen2.5-VL reference-policy scorer and attach the reward adapter to the existing MMSearch-R1/veRL rollout path.

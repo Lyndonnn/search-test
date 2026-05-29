@@ -90,6 +90,7 @@ On AutoDL A800:
 ```bash
 source projects/dagig_mmsearch/scripts/autodl_env.sh
 make autodl_check
+make hf_probe
 make setup
 make prepare_data
 make build_indexes
@@ -98,7 +99,7 @@ make train_dagig_lite
 make reference_logprob_smoke
 ```
 
-`make reference_logprob_smoke` is the first non-toy reward-scoring step: it loads `Qwen/Qwen2.5-VL-3B-Instruct` as a frozen HF reference policy and computes DAG-IG rewards on a tiny batch.
+`make hf_probe` checks Qwen model metadata access before the full download. `make reference_logprob_smoke` is the first non-toy reward-scoring step: it loads `Qwen/Qwen2.5-VL-3B-Instruct` as a frozen HF reference policy and computes DAG-IG rewards on a tiny batch.
 
 ## A100 Multi-Card Expansion Readiness
 

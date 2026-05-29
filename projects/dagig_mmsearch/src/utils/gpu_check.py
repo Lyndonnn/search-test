@@ -9,6 +9,7 @@ def main() -> None:
     print(f"python={sys.version.replace(chr(10), ' ')}")
     print(f"platform={platform.platform()}")
     print(f"HF_HOME={os.environ.get('HF_HOME', '')}")
+    print(f"HF_ENDPOINT={os.environ.get('HF_ENDPOINT', '<default huggingface.co>')}")
     print(f"DAGIG_DATA_ROOT={os.environ.get('DAGIG_DATA_ROOT', '')}")
     try:
         import torch
@@ -33,4 +34,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

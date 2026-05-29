@@ -3,7 +3,7 @@ DAGIG_ROOT := projects/dagig_mmsearch
 DAGIG_SRC := $(DAGIG_ROOT)/src
 export PYTHONPATH := $(DAGIG_SRC):$(PYTHONPATH)
 
-.PHONY: setup audit prepare_data build_indexes smoke autodl_check reference_logprob_smoke eval_nosearch eval_prompted train_outcome train_local_ig train_dagig_lite eval_all make_tables make_figures
+.PHONY: setup audit prepare_data build_indexes smoke autodl_check hf_probe reference_logprob_smoke eval_nosearch eval_prompted train_outcome train_local_ig train_dagig_lite eval_all make_tables make_figures
 
 setup:
 	bash $(DAGIG_ROOT)/scripts/setup_autodl_a800.sh
@@ -23,6 +23,9 @@ smoke:
 
 autodl_check:
 	bash $(DAGIG_ROOT)/scripts/check_gpu_env.sh
+
+hf_probe:
+	bash $(DAGIG_ROOT)/scripts/check_hf_access.sh
 
 reference_logprob_smoke:
 	bash $(DAGIG_ROOT)/scripts/run_reference_logprob_smoke.sh
