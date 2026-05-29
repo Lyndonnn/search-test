@@ -1,0 +1,12 @@
+ablation,implemented_stage,lambda_dep,cf_samples,status
+No-search direct VQA,True,,,smoke
+Prompted search,True,,,smoke
+Outcome-only RL,True,,,smoke
+Local-IG only,True,,"1,2,4,8",smoke
+Local-IG + typed counterfactual,True,,"1,2,4,8",smoke
+Local-IG + self-evidence summary,True,,"1,2,4,8",smoke
+DAG-IG-Lite without gate,True,"0.0,0.25,0.5,1.0","1,2,4,8",smoke
+DAG-IG-Lite with gate,True,"0.0,0.25,0.5,1.0","1,2,4,8",smoke
+DAG-IG-Lite with cost,True,"0.0,0.25,0.5,1.0","1,2,4,8",smoke
+Full DAG-IG,False,"0.0,0.25,0.5,1.0","1,2,4,8",planned_a100
+Full DAG-IG + crop/OCR/select,False,"0.0,0.25,0.5,1.0","1,2,4,8",planned_a100

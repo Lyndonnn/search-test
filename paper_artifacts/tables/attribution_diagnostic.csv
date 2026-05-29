@@ -1,0 +1,2 @@
+method,leave_one_step_out_rank_corr,note
+local_ig_vs_dagig_lite,0.5,Toy diagnostic placeholder; replace with reference-policy logprob recomputation for paper runs.

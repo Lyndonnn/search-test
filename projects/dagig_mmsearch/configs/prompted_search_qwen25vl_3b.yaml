@@ -1,0 +1,27 @@
+experiment_name: prompted_search_qwen25vl_3b
+seed: 42
+model:
+  name_or_path: Qwen/Qwen2.5-VL-3B-Instruct
+  precision: bf16
+  train_mode: eval_only
+data:
+  eval_sets:
+    - fvqa_val
+    - infoseek_val
+    - mmsearch_plus
+  max_prompt_length: 3072
+  max_response_length: 1024
+  max_gen_round: 3
+tools:
+  enabled:
+    - text_search
+    - image_search
+    - stop
+  search_topk: 5
+  image_search_limit: 1
+  text_search_limit: 2
+retrieval:
+  evidence_summary_max_tokens: 96
+logging:
+  save_trajectories: true
+

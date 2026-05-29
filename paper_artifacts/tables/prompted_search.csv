@@ -1,0 +1,2 @@
+method,exact_match,token_f1,accuracy,avg_tool_calls,avg_search_rounds,avg_latency,answer_per_tool_call,tool_call_success_rate,invalid_action_rate,over_search_rate,under_search_rate
+prompted_search,0.875,0.875,0.875,2.0,2.0,9.390711784362793e-05,0.4375,1.0,0.0,0.0,0.0

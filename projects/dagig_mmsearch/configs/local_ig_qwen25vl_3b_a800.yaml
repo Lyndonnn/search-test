@@ -1,0 +1,48 @@
+experiment_name: local_ig_qwen25vl_3b_a800
+seed: 42
+model:
+  name_or_path: Qwen/Qwen2.5-VL-3B-Instruct
+  precision: bf16
+  train_mode: qlora
+  lora_r: 64
+  lora_alpha: 128
+  lora_dropout: 0.05
+  gradient_checkpointing: true
+data:
+  train_sets:
+    - fvqa
+    - infoseek
+  eval_sets:
+    - fvqa_val
+    - infoseek_val
+    - mmsearch_plus
+  max_prompt_length: 3072
+  max_response_length: 1024
+  max_gen_round: 3
+tools:
+  enabled:
+    - text_search
+    - image_search
+    - stop
+  search_topk: 5
+retrieval:
+  evidence_summary_max_tokens: 96
+  cache_enabled: true
+train:
+  algorithm: grpo
+  group_size: 4
+  per_device_batch_size: 1
+  gradient_accumulation_steps: 8
+  learning_rate: 2.0e-6
+  total_steps: 8000
+reward:
+  outcome_weight: 1.0
+  local_ig_weight: 0.4
+  future_action_ig_weight: 0.0
+  gate_weight: 0.0
+  cost_weight: 0.05
+  cf_samples: 4
+  dead_zone: 0.02
+  negative_scale: 0.25
+  action_length_norm: true
+

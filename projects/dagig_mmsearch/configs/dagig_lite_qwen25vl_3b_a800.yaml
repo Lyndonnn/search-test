@@ -1,0 +1,83 @@
+experiment_name: dagig_lite_qwen25vl_3b_a800
+seed: 42
+
+model:
+  name_or_path: Qwen/Qwen2.5-VL-3B-Instruct
+  precision: bf16
+  train_mode: qlora
+  lora_r: 64
+  lora_alpha: 128
+  lora_dropout: 0.05
+  gradient_checkpointing: true
+
+data:
+  train_sets:
+    - fvqa
+    - infoseek
+    - encyclopedic_vqa
+  eval_sets:
+    - fvqa_val
+    - infoseek_val
+    - mmsearch_plus
+  max_prompt_length: 3072
+  max_response_length: 1024
+  max_gen_round: 3
+
+tools:
+  enabled:
+    - text_search
+    - image_search
+    - stop
+  search_topk: 5
+  image_search_limit: 1
+  text_search_limit: 2
+  parallel_tool_call: true
+  parallel_tool_call_threads: 4
+
+retrieval:
+  text_first_stage: bm25
+  image_first_stage: clip_or_siglip
+  evidence_summary_max_tokens: 96
+  cache_enabled: true
+
+train:
+  algorithm: grpo
+  group_size: 4
+  per_device_batch_size: 1
+  gradient_accumulation_steps: 8
+  learning_rate: 2.0e-6
+  kl_coef: 1.0e-3
+  total_steps: 8000
+  log_every: 20
+  eval_every: 200
+  save_every: 200
+
+reward:
+  outcome_weight: 1.0
+  local_ig_weight: 0.4
+  future_action_ig_weight: 0.6
+  gate_weight: 0.2
+  cost_weight: 0.05
+  cf_samples: 4
+  dependency_mode: next_step_only
+  lambda_dep: 0.5
+  dead_zone: 0.02
+  negative_scale: 0.25
+  positive_only_future: true
+  action_length_norm: true
+
+logging:
+  wandb: true
+  save_trajectories: true
+  save_reward_debug: true
+  save_counterfactual_examples: true
+
+oom_downgrade:
+  order:
+    - data.max_response_length: 768
+    - train.group_size: 2
+    - data.max_prompt_length: 2048
+    - model.lora_r: 32
+    - data.image_max_pixels: 262144
+    - train.per_device_batch_size: 1
+

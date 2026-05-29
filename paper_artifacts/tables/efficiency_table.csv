@@ -1,0 +1,6 @@
+method,avg_tool_calls,avg_latency,answer_per_tool_call,tool_call_success_rate
+direct_vqa,0.0,1.049041748046875e-05,0.375,0.0
+prompted_search,2.0,9.390711784362793e-05,0.4375,1.0
+outcome_only_rl,2.0,9.840726852416992e-05,0.4375,1.0
+local_ig_only,2.0,0.0002269744873046875,0.4375,1.0
+dagig_lite_with_gate_cost,2.0,9.706616401672363e-05,0.4375,1.0

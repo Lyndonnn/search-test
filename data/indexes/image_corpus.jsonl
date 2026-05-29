@@ -1,0 +1,8 @@
+{"image_id": "img_eiffel", "title": "Eiffel Tower", "caption": "Paris landmark tower.", "answer": "Paris"}
+{"image_id": "img_louvre", "title": "Mona Lisa Louvre", "caption": "Museum context points to the Louvre Museum.", "answer": "Louvre Museum"}
+{"image_id": "img_golden_gate", "title": "Golden Gate Bridge", "caption": "San Francisco red suspension bridge.", "answer": "San Francisco"}
+{"image_id": "img_liberty", "title": "Statue of Liberty", "caption": "New York City harbor monument.", "answer": "New York City"}
+{"image_id": "img_colosseum", "title": "Colosseum", "caption": "Ancient amphitheater in Rome.", "answer": "Rome"}
+{"image_id": "img_sydney", "title": "Sydney Opera House", "caption": "Harbor performing arts venue in Sydney.", "answer": "Sydney"}
+{"image_id": "img_taj", "title": "Taj Mahal", "caption": "White marble mausoleum in Agra.", "answer": "Agra"}
+{"image_id": "img_giza", "title": "Pyramids of Giza", "caption": "Ancient pyramids near Cairo.", "answer": "Cairo"}

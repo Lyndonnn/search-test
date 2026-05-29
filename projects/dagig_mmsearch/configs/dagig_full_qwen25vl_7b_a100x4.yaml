@@ -1,0 +1,36 @@
+experiment_name: dagig_full_qwen25vl_7b_a100x4
+
+model:
+  name_or_path: Qwen/Qwen2.5-VL-7B-Instruct
+  precision: bf16
+  train_mode: lora_or_full
+  gradient_checkpointing: true
+
+distributed:
+  backend: deepspeed_or_fsdp
+  num_gpus: 4
+  zero_stage: 2
+  use_vllm_rollout: true
+
+tools:
+  enabled:
+    - text_search
+    - image_search
+    - crop
+    - ocr
+    - select
+    - stop
+
+reward:
+  dependency_mode: full_dag_top2
+  max_future_edges_per_step: 2
+  cf_samples: 4
+  lambda_dep: 0.5
+  use_toollet_shapley: false
+
+future_work:
+  - crop -> OCR -> text_search chain
+  - image_search -> select -> answer chain
+  - full backward propagation
+  - attribution case studies
+

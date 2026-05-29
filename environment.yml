@@ -1,0 +1,28 @@
+name: dagig-mmsearch
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - pandas
+  - pyarrow
+  - pillow
+  - pyyaml
+  - matplotlib
+  - scipy
+  - scikit-learn
+  - pip:
+      - hydra-core>=1.3.2
+      - omegaconf>=2.3.0
+      - transformers==4.51.0
+      - accelerate
+      - safetensors
+      - qwen-vl-utils
+      - sentencepiece
+      - datasets
+      - tqdm
+      - pytest
+
