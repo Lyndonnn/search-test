@@ -120,3 +120,7 @@ _debug.sh
 # Local parquet data beyond the checked-in mini sanity set
 mmsearch_r1/data/*.parquet
 !mmsearch_r1/data/mini_data.pq
+
+# DAG-IG local runtime caches
+data/cache/
+logs/*.tmp

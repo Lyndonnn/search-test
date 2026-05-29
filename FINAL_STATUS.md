@@ -24,6 +24,7 @@ Updated: 2026-05-29
 - `make audit`
 - `make make_figures`
 - `make setup`
+- `make autodl_check`
 - `bash projects/dagig_mmsearch/scripts/clone_third_party.sh` completed with handled clone failures and wrote status output.
 
 ## Failed Commands
@@ -87,21 +88,24 @@ Updated: 2026-05-29
 On AutoDL A800:
 
 ```bash
+source projects/dagig_mmsearch/scripts/autodl_env.sh
+make autodl_check
 make setup
 make prepare_data
 make build_indexes
 make smoke
 make train_dagig_lite
+make reference_logprob_smoke
 ```
 
-Then replace the toy `FrozenLogProbScorer` fallback with a frozen Qwen2.5-VL reference-policy logprob path and attach the reward adapter to the existing MMSearch-R1/veRL rollout traces.
+`make reference_logprob_smoke` is the first non-toy reward-scoring step: it loads `Qwen/Qwen2.5-VL-3B-Instruct` as a frozen HF reference policy and computes DAG-IG rewards on a tiny batch.
 
 ## A100 Multi-Card Expansion Readiness
 
 - Not ready for production A100 multi-card expansion yet.
 - The config scaffold exists in `projects/dagig_mmsearch/configs/dagig_full_qwen25vl_7b_a100x4.yaml`.
 - Required before starting full A100 work:
-  - real reference-policy logprob scoring
+  - validate real reference-policy logprob scoring on A800 with `make reference_logprob_smoke`
   - veRL reward-manager adapter
   - real MMSearch-R1 trajectory span extraction
   - crop/OCR/select rollout traces
