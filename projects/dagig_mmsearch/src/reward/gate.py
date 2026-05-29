@@ -27,9 +27,13 @@ class GateRewardScorer:
     def score(self, trajectory: Trajectory, step: ToolStep) -> float:
         answers = self._probe_answers(trajectory)
         consistency = self._consistency(answers)
+        consensus = self._consensus(answers)
+        action_match = self._similarity(step.action_text, consensus)
         is_stop = step.tool_type == "stop"
-        if consistency >= self.consistency_threshold and is_stop:
+        if consistency >= self.consistency_threshold and is_stop and action_match >= self.consistency_threshold:
             return 1.0
+        if consistency >= self.consistency_threshold and is_stop:
+            return -0.5
         if consistency >= self.consistency_threshold and not is_stop:
             return -0.25
         if consistency < self.consistency_threshold and not is_stop:
@@ -56,3 +60,19 @@ class GateRewardScorer:
                 scores.append(difflib.SequenceMatcher(None, norm[i], norm[j]).ratio())
         return sum(scores) / max(1, len(scores))
 
+    def _consensus(self, answers: list[str]) -> str:
+        norm = [normalize_text(answer) for answer in answers if answer]
+        if not norm:
+            return ""
+        return max(set(norm), key=norm.count)
+
+    def _similarity(self, a: str, b: str) -> float:
+        a_norm = normalize_text(a)
+        b_norm = normalize_text(b)
+        if not a_norm or not b_norm:
+            return 0.0
+        if a_norm == b_norm:
+            return 1.0
+        if a_norm in b_norm or b_norm in a_norm:
+            return 0.9
+        return difflib.SequenceMatcher(None, a_norm, b_norm).ratio()

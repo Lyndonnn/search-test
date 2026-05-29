@@ -5,7 +5,7 @@
   "accuracy": 0.875,
   "avg_tool_calls": 2.0,
   "avg_search_rounds": 2.0,
-  "avg_latency": 9.706616401672363e-05,
+  "avg_latency": 0.00010985136032104492,
   "answer_per_tool_call": 0.4375,
   "tool_call_success_rate": 1.0,
   "invalid_action_rate": 0.0,
@@ -17,9 +17,9 @@
   "future_action_ig_std": 0.7548739340531991,
   "propagated_return_mean": 0.5414586119256988,
   "propagated_return_std": 0.7547903083050036,
-  "positive_reward_ratio": 0.625,
-  "reward_final_correctness_correlation": 0.12668699166809694,
+  "positive_reward_ratio": 0.5625,
+  "reward_final_correctness_correlation": 0.2557900005858849,
   "reward_mean_text_search": 0.937619684401597,
-  "reward_mean_stop": 0.012500000000000004,
+  "reward_mean_stop": -0.025,
   "reward_mean_image_search": 2.025
 }

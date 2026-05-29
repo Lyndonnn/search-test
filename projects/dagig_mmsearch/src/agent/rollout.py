@@ -129,9 +129,9 @@ def prompted_search_rollout(samples: list[VQASample], search_topk: int = 5) -> t
             full_response="\n".join(step.action_text for step in steps),
             metadata={
                 "response_token_count": span,
-                "tool_free_answers": [sample.gold_answers[0], sample.gold_answers[0], sample.gold_answers[0]]
+                "tool_free_answers": [_direct_answer(sample.question)] * 3
                 if not sample.metadata.get("needs_search")
-                else ["unknown", sample.gold_answers[0], "uncertain"],
+                else ["unknown", _direct_answer(sample.question), "uncertain"],
             },
         )
         trajectories.append(trajectory)
@@ -191,4 +191,3 @@ def _direct_answer(question: str) -> str:
     if "sydney opera" in q:
         return "Sydney"
     return "unknown"
-
