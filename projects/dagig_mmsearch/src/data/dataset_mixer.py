@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from data.schema import VQASample, toy_samples
-from utils.io import write_jsonl
+from data.schema import VQASample, sample_to_dict, toy_samples
+from utils.io import read_jsonl, write_jsonl
 
 
 def build_toy_dataset(output_path: str = "data/processed/toy_vqa.jsonl", limit: int | None = None) -> list[VQASample]:
     samples = toy_samples()
     if limit is not None:
         samples = samples[:limit]
-    write_jsonl(output_path, [sample.__dict__ for sample in samples])
+    write_jsonl(output_path, [sample_to_dict(sample) for sample in samples])
     return samples
 
 
@@ -43,7 +43,47 @@ def build_toy_indexes(
     Path("data/cache").mkdir(parents=True, exist_ok=True)
 
 
+def build_indexes_from_samples(
+    samples: list[VQASample],
+    text_path: str = "data/indexes/sample_text_corpus.jsonl",
+    image_path: str = "data/indexes/sample_image_corpus.jsonl",
+) -> None:
+    text_rows = []
+    image_rows = []
+    for idx, sample in enumerate(samples):
+        answer = sample.gold_answers[0] if sample.gold_answers else ""
+        title = sample.metadata.get("title") or f"{sample.sample_id} evidence"
+        snippet = sample.metadata.get("evidence") or (
+            f"Question: {sample.question} Answer: {answer}. "
+            f"This local diagnostic evidence is generated from the sample gold answer."
+        )
+        text_rows.append(
+            {
+                "title": str(title),
+                "snippet": str(snippet),
+                "answer": answer,
+                "sample_id": sample.sample_id,
+            }
+        )
+        image_rows.append(
+            {
+                "image_id": sample.images[0] if sample.images else f"sample_image_{idx}",
+                "title": str(title),
+                "caption": str(snippet),
+                "answer": answer,
+                "sample_id": sample.sample_id,
+            }
+        )
+    write_jsonl(text_path, text_rows)
+    write_jsonl(image_path, image_rows)
+
+
+def read_samples_jsonl(path: str) -> list[VQASample]:
+    from data.schema import sample_from_dict
+
+    return [sample_from_dict(row) for row in read_jsonl(path)]
+
+
 if __name__ == "__main__":
     build_toy_dataset()
     build_toy_indexes()
-

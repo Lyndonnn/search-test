@@ -10,10 +10,24 @@ from tools.text_search import TextSearchTool
 
 
 class ToolDispatcher:
-    def __init__(self, search_topk: int = 5, max_summary_tokens: int = 96) -> None:
+    def __init__(
+        self,
+        search_topk: int = 5,
+        max_summary_tokens: int = 96,
+        text_index_path: str = "data/indexes/text_corpus.jsonl",
+        image_index_path: str = "data/indexes/image_corpus.jsonl",
+    ) -> None:
         self.tools = {
-            "text_search": TextSearchTool(topk=search_topk, max_summary_tokens=max_summary_tokens),
-            "image_search": ImageSearchTool(topk=search_topk, max_summary_tokens=max_summary_tokens),
+            "text_search": TextSearchTool(
+                index_path=text_index_path,
+                topk=search_topk,
+                max_summary_tokens=max_summary_tokens,
+            ),
+            "image_search": ImageSearchTool(
+                index_path=image_index_path,
+                topk=search_topk,
+                max_summary_tokens=max_summary_tokens,
+            ),
             "crop": CropTool(max_summary_tokens=max_summary_tokens),
             "ocr": OCRTool(max_summary_tokens=max_summary_tokens),
         }
@@ -43,4 +57,3 @@ class ToolDispatcher:
             raw = {"error": f"unknown tool {tool_type}", "action": action_text}
             return ToolResult(tool_type=tool_type, raw_observation=raw, evidence_summary=str(raw), success=False)
         return self.tools[tool_type].run(action_text, **kwargs)
-

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -10,6 +11,42 @@ class VQASample:
     images: list[str]
     gold_answers: list[str]
     metadata: dict = field(default_factory=dict)
+
+
+def sample_to_dict(sample: VQASample) -> dict[str, Any]:
+    return {
+        "sample_id": sample.sample_id,
+        "question": sample.question,
+        "images": list(sample.images),
+        "gold_answers": list(sample.gold_answers),
+        "metadata": dict(sample.metadata),
+    }
+
+
+def sample_from_dict(row: dict[str, Any]) -> VQASample:
+    gold = row.get("gold_answers", row.get("answers", row.get("answer", [])))
+    if isinstance(gold, str):
+        gold_answers = [gold]
+    elif isinstance(gold, (list, tuple)):
+        gold_answers = [str(item) for item in gold if str(item).strip()]
+    else:
+        gold_answers = [str(gold)] if gold is not None else []
+    images = row.get("images", row.get("image", []))
+    if isinstance(images, str):
+        image_list = [images]
+    elif isinstance(images, (list, tuple)):
+        image_list = [str(item) for item in images]
+    elif images is None:
+        image_list = []
+    else:
+        image_list = [str(images)]
+    return VQASample(
+        sample_id=str(row.get("sample_id", row.get("id", row.get("question_id", "")))),
+        question=str(row.get("question", row.get("query", ""))).strip(),
+        images=image_list,
+        gold_answers=gold_answers,
+        metadata=dict(row.get("metadata", {})),
+    )
 
 
 def toy_samples() -> list[VQASample]:
@@ -71,4 +108,3 @@ def toy_samples() -> list[VQASample]:
             metadata={"needs_search": True},
         ),
     ]
-

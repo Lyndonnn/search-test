@@ -10,7 +10,12 @@ from utils.io import read_jsonl
 class TextSearchTool:
     tool_type = "text_search"
 
-    def __init__(self, index_path: str = "data/indexes/text_corpus.jsonl", topk: int = 5, max_summary_tokens: int = 96):
+    def __init__(
+        self,
+        index_path: str = "data/indexes/text_corpus.jsonl",
+        topk: int = 5,
+        max_summary_tokens: int = 96,
+    ):
         self.index_path = Path(index_path)
         self.topk = topk
         self.max_summary_tokens = max_summary_tokens
@@ -62,4 +67,3 @@ class TextSearchTool:
                 "answer": "San Francisco",
             },
         ]
-

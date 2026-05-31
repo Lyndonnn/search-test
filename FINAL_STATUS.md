@@ -101,6 +101,20 @@ make reference_logprob_smoke
 
 `make hf_probe` checks Qwen model metadata access before the full download. `make reference_logprob_smoke` is the first non-toy reward-scoring step: it loads `Qwen/Qwen2.5-VL-3B-Instruct` as a frozen HF reference policy and computes DAG-IG rewards on a tiny batch.
 
+Next real-data diagnostic command:
+
+```bash
+python3 -m pip install datasets
+DAGIG_REAL_DATASET=fvqa DAGIG_REAL_SPLIT=train DAGIG_REAL_LIMIT=32 make prepare_real_data
+DAGIG_REF_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_REF_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_REF_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+DAGIG_REF_METHOD=reference_logprob_fvqa_train \
+DAGIG_REF_SMOKE_LIMIT=32 \
+DAGIG_REF_CF_SAMPLES=2 \
+make reference_logprob_smoke
+```
+
 ## A100 Multi-Card Expansion Readiness
 
 - Not ready for production A100 multi-card expansion yet.

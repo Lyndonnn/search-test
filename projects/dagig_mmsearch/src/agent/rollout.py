@@ -75,8 +75,17 @@ def direct_vqa_rollout(samples: list[VQASample]) -> list[dict[str, Any]]:
     return rows
 
 
-def prompted_search_rollout(samples: list[VQASample], search_topk: int = 5) -> tuple[list[dict[str, Any]], list[Trajectory]]:
-    dispatcher = ToolDispatcher(search_topk=search_topk)
+def prompted_search_rollout(
+    samples: list[VQASample],
+    search_topk: int = 5,
+    text_index_path: str = "data/indexes/text_corpus.jsonl",
+    image_index_path: str = "data/indexes/image_corpus.jsonl",
+) -> tuple[list[dict[str, Any]], list[Trajectory]]:
+    dispatcher = ToolDispatcher(
+        search_topk=search_topk,
+        text_index_path=text_index_path,
+        image_index_path=image_index_path,
+    )
     tokenizer = SimpleTokenizer()
     rows: list[dict[str, Any]] = []
     trajectories: list[Trajectory] = []

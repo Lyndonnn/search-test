@@ -104,4 +104,25 @@ export HF_ENDPOINT=https://huggingface.co
 
 The reference smoke scores a 2-sample DAG-IG batch with `cf_samples=1` by default, writing `results/dagig_lite/reference_logprob_smoke.jsonl` and `paper_artifacts/tables/reference_logprob_smoke.csv`.
 
+## Real Small-Data Diagnostic
+
+After toy reward diagnostics are stable, prepare a small HF VQA split and score it with the same reference-policy path:
+
+```bash
+source projects/dagig_mmsearch/scripts/autodl_env.sh
+python3 -m pip install datasets
+
+DAGIG_REAL_DATASET=fvqa DAGIG_REAL_SPLIT=train DAGIG_REAL_LIMIT=32 make prepare_real_data
+
+DAGIG_REF_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_REF_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_REF_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+DAGIG_REF_METHOD=reference_logprob_fvqa_train \
+DAGIG_REF_SMOKE_LIMIT=32 \
+DAGIG_REF_CF_SAMPLES=2 \
+make reference_logprob_smoke
+```
+
+The adapter also accepts any HF dataset name through `DAGIG_REAL_DATASET=<hf_org/dataset>`. It extracts common `question`, `answer(s)`, and image columns into the DAG-IG `VQASample` schema, then builds local diagnostic search indexes from gold evidence. This is a reward-diagnostic bridge, not yet the final production retrieval setup.
+
 The current implementation is intentionally CPU-smoke-testable. A800/A100 training should replace the toy logprob scorer with a frozen Qwen2.5-VL reference-policy scorer and attach the reward adapter to the existing MMSearch-R1/veRL rollout path.

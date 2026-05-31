@@ -4,6 +4,7 @@ import argparse
 from dataclasses import asdict
 
 from agent.rollout import prompted_search_rollout
+from data.dataset_mixer import read_samples_jsonl
 from data.schema import toy_samples
 from eval.metrics import aggregate_rollouts
 from eval.statistics import reward_diagnostics
@@ -23,6 +24,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=2)
     parser.add_argument("--cf-samples", type=int, default=1)
     parser.add_argument("--output", default="results/dagig_lite/reference_logprob_smoke.jsonl")
+    parser.add_argument("--samples-jsonl", default="")
+    parser.add_argument("--text-index", default="data/indexes/text_corpus.jsonl")
+    parser.add_argument("--image-index", default="data/indexes/image_corpus.jsonl")
+    parser.add_argument("--method", default="reference_logprob_smoke")
     return parser.parse_args()
 
 
@@ -54,7 +59,12 @@ def main() -> None:
         gamma=float(cfg.get("reward", {}).get("cost_weight", 0.05)),
     )
 
-    rows, trajectories = prompted_search_rollout(toy_samples()[: args.limit])
+    samples = read_samples_jsonl(args.samples_jsonl) if args.samples_jsonl else toy_samples()
+    rows, trajectories = prompted_search_rollout(
+        samples[: args.limit],
+        text_index_path=args.text_index,
+        image_index_path=args.image_index,
+    )
     enriched = []
     for row, trajectory in zip(rows, trajectories):
         output = reward.compute(trajectory)
@@ -72,13 +82,13 @@ def main() -> None:
                     "reward_diagnostics": asdict(step_reward),
                 }
             )
-        row["method"] = "reference_logprob_smoke"
+        row["method"] = args.method
         row["token_rewards"] = output.token_rewards
         row["reward_diagnostics"] = output.diagnostics
         enriched.append(row)
 
     write_jsonl(args.output, enriched)
-    summary = aggregate_rollouts(enriched, "reference_logprob_smoke")
+    summary = aggregate_rollouts(enriched, args.method)
     summary.update(reward_diagnostics(enriched))
     write_csv("paper_artifacts/tables/reference_logprob_smoke.csv", [summary])
     print(f"saved {args.output}")
@@ -86,4 +96,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
