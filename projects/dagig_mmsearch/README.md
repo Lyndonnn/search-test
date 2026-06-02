@@ -123,6 +123,6 @@ DAGIG_REF_CF_SAMPLES=2 \
 make reference_logprob_smoke
 ```
 
-The adapter also accepts any HF dataset name through `DAGIG_REAL_DATASET=<hf_org/dataset>`. It extracts common `question`, `answer(s)`, and image columns into the DAG-IG `VQASample` schema, then builds local diagnostic search indexes from gold evidence. This is a reward-diagnostic bridge, not yet the final production retrieval setup.
+The adapter also accepts any HF dataset name through `DAGIG_REAL_DATASET=<hf_org/dataset>`. It streams the dataset by default, extracts common `question`, `answer(s)`, `prompt`, `reward_model`, and image columns into the DAG-IG `VQASample` schema, then builds local diagnostic search indexes from gold evidence. This is a reward-diagnostic bridge, not yet the final production retrieval setup.
 
 The current implementation is intentionally CPU-smoke-testable. A800/A100 training should replace the toy logprob scorer with a frozen Qwen2.5-VL reference-policy scorer and attach the reward adapter to the existing MMSearch-R1/veRL rollout path.

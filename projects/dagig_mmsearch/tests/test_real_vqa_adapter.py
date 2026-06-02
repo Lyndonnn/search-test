@@ -20,6 +20,25 @@ class RealVQAAdapterTest(unittest.TestCase):
         self.assertEqual(sample.images[0], "https://example.test/eiffel.jpg")
         self.assertTrue(sample.metadata["needs_search"])
 
+    def test_fvqa_style_row_to_sample(self):
+        row = {
+            "data_id": "fvqa_train_7",
+            "prompt": [{"content": "In which year did this building officially open?", "role": "user"}],
+            "images": [{"bytes": b"fake"}],
+            "reward_model": {
+                "candidate_answers": '["1990", "1989", "1991"]',
+                "ground_truth": "1990",
+                "style": "rule",
+            },
+            "category": "search_required",
+        }
+        sample = row_to_sample(row, 7, "fvqa")
+        self.assertEqual(sample.sample_id, "fvqa_train_7")
+        self.assertEqual(sample.question, "In which year did this building officially open?")
+        self.assertEqual(sample.gold_answers[:2], ["1990", "1989"])
+        self.assertEqual(sample.images[0], "image://fvqa_train_7_0")
+        self.assertTrue(sample.metadata["needs_search"])
+
     def test_build_indexes_from_samples(self):
         row = {
             "question": "Which city?",

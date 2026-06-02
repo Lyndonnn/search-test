@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import itertools
+import json
 from typing import Any
 
 from data.dataset_mixer import build_indexes_from_samples
@@ -24,17 +26,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--text-index", default="")
     parser.add_argument("--image-index", default="")
     parser.add_argument("--fallback-to-toy", action="store_true")
+    parser.add_argument("--no-streaming", action="store_true")
     return parser.parse_args()
 
 
-def load_hf_vqa_samples(dataset: str, split: str, limit: int) -> list[VQASample]:
+def load_hf_vqa_samples(dataset: str, split: str, limit: int, streaming: bool = True) -> list[VQASample]:
     try:
         from datasets import load_dataset
     except Exception as exc:
         raise RuntimeError("Install datasets to load HF VQA data: pip install datasets") from exc
 
     dataset_name = DATASET_ALIASES.get(dataset, dataset)
-    ds = load_dataset(dataset_name, split=split)
+    ds = load_dataset(dataset_name, split=split, streaming=streaming)
     samples: list[VQASample] = []
     for idx, row in enumerate(itertools.islice(ds, limit * 3)):
         sample = row_to_sample(row, idx, dataset)
@@ -56,14 +59,18 @@ def row_to_sample(row: dict[str, Any], idx: int, dataset: str) -> VQASample:
         or row.get("question_id")
         or row.get("qid")
         or row.get("id")
+        or row.get("data_id")
         or row.get("image_id")
         or f"{dataset}_{idx}"
     )
+    category = str(row.get("category", "")).lower()
     metadata = {
         "source_dataset": dataset,
-        "needs_search": True,
+        "needs_search": category != "no_search",
         "row_keys": sorted(str(key) for key in row.keys()),
     }
+    if row.get("category") is not None:
+        metadata["category"] = str(row.get("category"))
     evidence = _first_text(row, ["evidence", "caption", "context", "passage", "wiki_title"])
     if evidence:
         metadata["evidence"] = evidence
@@ -92,17 +99,32 @@ def _first_text(row: dict[str, Any], keys: list[str]) -> str:
                 first = value[0]
                 if isinstance(first, str):
                     return first.strip()
+                if isinstance(first, dict):
+                    for nested_key in ("content", "text", "value", "answer", "title"):
+                        if nested_key in first and first[nested_key] is not None:
+                            return str(first[nested_key]).strip()
                 return str(first).strip()
     return ""
 
 
 def _answers(row: dict[str, Any]) -> list[str]:
+    if isinstance(row.get("reward_model"), dict):
+        reward_model = row["reward_model"]
+        values = []
+        ground_truth = reward_model.get("ground_truth")
+        if ground_truth is not None and str(ground_truth).strip():
+            values.append(str(ground_truth).strip())
+        candidates = reward_model.get("candidate_answers")
+        values.extend(_parse_answer_list(candidates))
+        if values:
+            return _dedupe(values)
     for key in ("answers", "answer", "gold_answers", "label", "target", "ground_truth", "candidate_answers"):
         if key not in row or row[key] is None:
             continue
         value = row[key]
         if isinstance(value, str):
-            return [value.strip()] if value.strip() else []
+            parsed = _parse_answer_list(value)
+            return parsed or ([value.strip()] if value.strip() else [])
         if isinstance(value, dict):
             values = []
             for nested_key in ("text", "answer", "value", "label"):
@@ -123,11 +145,12 @@ def _answers(row: dict[str, Any]) -> list[str]:
                 elif str(item).strip():
                     values.append(str(item).strip())
             if values:
-                return values
+                return _dedupe(values)
     return []
 
 
 def _images(row: dict[str, Any], idx: int) -> list[str]:
+    data_id = row.get("data_id") or row.get("sample_id") or row.get("id") or idx
     for key in ("image_url", "image_urls", "image_path", "image", "images"):
         if key not in row or row[key] is None:
             continue
@@ -135,14 +158,60 @@ def _images(row: dict[str, Any], idx: int) -> list[str]:
         if isinstance(value, str):
             return [value]
         if isinstance(value, (list, tuple)):
-            return [str(item) for item in value[:3]]
+            result = []
+            for item_idx, item in enumerate(value[:3]):
+                if isinstance(item, str):
+                    result.append(item)
+                elif isinstance(item, dict):
+                    if "url" in item:
+                        result.append(str(item["url"]))
+                    elif "path" in item:
+                        result.append(str(item["path"]))
+                    else:
+                        result.append(f"image://{data_id}_{item_idx}")
+                else:
+                    result.append(f"image://{data_id}_{item_idx}")
+            return result
         if isinstance(value, dict):
             for nested_key in ("path", "url", "id"):
                 if nested_key in value and value[nested_key] is not None:
                     return [str(value[nested_key])]
-            return [f"image://{idx}"]
-        return [f"image://{idx}"]
-    return [f"image://{idx}"]
+            return [f"image://{data_id}"]
+        return [f"image://{data_id}"]
+    return [f"image://{data_id}"]
+
+
+def _parse_answer_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return _dedupe([str(item).strip() for item in value if str(item).strip()])
+    if not isinstance(value, str):
+        return [str(value).strip()] if str(value).strip() else []
+    text = value.strip()
+    if not text:
+        return []
+    for parser in (json.loads, ast.literal_eval):
+        try:
+            parsed = parser(text)
+        except Exception:
+            continue
+        if isinstance(parsed, (list, tuple)):
+            return _dedupe([str(item).strip() for item in parsed if str(item).strip()])
+        if isinstance(parsed, str) and parsed.strip():
+            return [parsed.strip()]
+    return [text]
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen = set()
+    out = []
+    for value in values:
+        key = value.lower()
+        if value and key not in seen:
+            out.append(value)
+            seen.add(key)
+    return out
 
 
 def main() -> None:
@@ -151,7 +220,7 @@ def main() -> None:
     text_index = args.text_index or f"data/indexes/{args.dataset}_{args.split}_text_corpus.jsonl"
     image_index = args.image_index or f"data/indexes/{args.dataset}_{args.split}_image_corpus.jsonl"
     try:
-        samples = load_hf_vqa_samples(args.dataset, args.split, args.limit)
+        samples = load_hf_vqa_samples(args.dataset, args.split, args.limit, streaming=not args.no_streaming)
     except Exception:
         if not args.fallback_to_toy:
             raise
