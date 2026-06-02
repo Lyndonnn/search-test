@@ -1,6 +1,6 @@
 # FINAL_STATUS
 
-Updated: 2026-05-29
+Updated: 2026-06-02
 
 ## Current Environment
 
@@ -20,6 +20,7 @@ Updated: 2026-05-29
 - `make prepare_data`
 - `make build_indexes`
 - `make smoke`
+- `make agent_rollout_smoke`
 - `make eval_all`
 - `make audit`
 - `make make_figures`
@@ -54,10 +55,12 @@ Updated: 2026-05-29
 - `results/local_ig/local_ig_smoke.jsonl`
 - `results/dagig_lite/dagig_reward_debug.jsonl`
 - `results/dagig_lite/dagig_lite_smoke.jsonl`
+- `results/agent_rollout/agentic_rollout_smoke.jsonl`
 - `paper_artifacts/tables/main_table.csv`
 - `paper_artifacts/tables/efficiency_table.csv`
 - `paper_artifacts/tables/ablation_table.csv`
 - `paper_artifacts/tables/attribution_diagnostic.csv`
+- `paper_artifacts/tables/agentic_rollout_smoke.csv`
 - `paper_artifacts/figures/accuracy_vs_toolcalls.png`
 - `paper_artifacts/figures/local_ig_hist.png`
 - `paper_artifacts/figures/future_action_ig_hist.png`
@@ -80,7 +83,11 @@ Updated: 2026-05-29
   - tool cost penalty
   - JSONL rollout/debug logging
   - tables and figures
-  - 20 passing smoke tests
+  - reference-policy reward smoke entrypoint
+  - FVQA small-data adapter with Colab finalization-abort tolerance
+  - reference reward ablation entrypoint
+  - lightweight agentic rollout smoke entrypoint
+  - 27 passing smoke tests
 - Production A800 training is not yet complete because this local environment has no CUDA GPU and no model download was attempted.
 
 ## Next Most Important Command
@@ -115,12 +122,35 @@ DAGIG_REF_CF_SAMPLES=2 \
 make reference_logprob_smoke
 ```
 
+After the FVQA 32/cf4 reference diagnostic is stable, run reward ablations:
+
+```bash
+DAGIG_REF_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_REF_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_REF_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+DAGIG_ABLATION_LIMIT=32 \
+DAGIG_ABLATION_CF_SAMPLES=4 \
+DAGIG_ABLATION_METHOD_PREFIX=reference_ablation_fvqa_train \
+make reference_ablation
+```
+
+Then run lightweight agent rollout:
+
+```bash
+DAGIG_AGENT_LIMIT=32 \
+DAGIG_AGENT_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_AGENT_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_AGENT_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+make agent_rollout_smoke
+```
+
 ## A100 Multi-Card Expansion Readiness
 
 - Not ready for production A100 multi-card expansion yet.
 - The config scaffold exists in `projects/dagig_mmsearch/configs/dagig_full_qwen25vl_7b_a100x4.yaml`.
 - Required before starting full A100 work:
   - validate real reference-policy logprob scoring on A800 with `make reference_logprob_smoke`
+  - validate FVQA 32/cf4 ablation table with `make reference_ablation`
   - veRL reward-manager adapter
   - real MMSearch-R1 trajectory span extraction
   - crop/OCR/select rollout traces

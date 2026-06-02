@@ -126,3 +126,35 @@ make reference_logprob_smoke
 The adapter also accepts any HF dataset name through `DAGIG_REAL_DATASET=<hf_org/dataset>`. It streams the dataset by default, extracts common `question`, `answer(s)`, `prompt`, `reward_model`, and image columns into the DAG-IG `VQASample` schema, then builds local diagnostic search indexes from gold evidence. This is a reward-diagnostic bridge, not yet the final production retrieval setup.
 
 The current implementation is intentionally CPU-smoke-testable. A800/A100 training should replace the toy logprob scorer with a frozen Qwen2.5-VL reference-policy scorer and attach the reward adapter to the existing MMSearch-R1/veRL rollout path.
+
+## Ablation And Agent Rollout
+
+After FVQA 32-sample reference scoring is stable with `cf_samples=4`, run controlled reward ablations on the same trajectories:
+
+```bash
+DAGIG_REF_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_REF_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_REF_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+DAGIG_ABLATION_LIMIT=32 \
+DAGIG_ABLATION_CF_SAMPLES=4 \
+DAGIG_ABLATION_METHOD_PREFIX=reference_ablation_fvqa_train \
+make reference_ablation
+```
+
+This writes per-variant JSONL files under `results/ablations/` and the summary table `paper_artifacts/tables/reference_ablation.csv`. The default variants are `local_ig_only`, `dagig_lite`, `dagig_no_gate`, `dagig_no_cost`, and `lambda_dep` values `0`, `0.25`, `0.5`, `1.0`.
+
+To run the lightweight agent rollout smoke without loading Qwen:
+
+```bash
+DAGIG_AGENT_LIMIT=32 \
+DAGIG_AGENT_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_AGENT_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_AGENT_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+make agent_rollout_smoke
+```
+
+This writes `results/agent_rollout/agentic_rollout_smoke.jsonl` and `paper_artifacts/tables/agentic_rollout_smoke.csv`. To score ablations on these agentic trajectories instead of fixed prompted trajectories, add:
+
+```bash
+DAGIG_ABLATION_ROLLOUT_MODE=agentic make reference_ablation
+```

@@ -1,6 +1,6 @@
 import unittest
 
-from agent.rollout import dagig_reward_debug_rollout, direct_vqa_rollout, prompted_search_rollout
+from agent.rollout import agentic_search_rollout, dagig_reward_debug_rollout, direct_vqa_rollout, prompted_search_rollout
 from data.schema import toy_samples
 
 
@@ -16,6 +16,16 @@ class RolloutSmokeTest(unittest.TestCase):
         self.assertEqual(len(trajectories), 8)
         self.assertTrue(all(len(row["steps"]) >= 2 for row in rows))
 
+    def test_agentic_search_has_stop_and_search_branches(self):
+        rows, trajectories = agentic_search_rollout(toy_samples())
+        self.assertEqual(len(rows), 8)
+        self.assertEqual(len(trajectories), 8)
+        by_id = {row["sample_id"]: row for row in rows}
+        self.assertEqual(len(by_id["toy_eiffel"]["steps"]), 1)
+        self.assertEqual(by_id["toy_eiffel"]["steps"][0]["tool_type"], "stop")
+        self.assertGreaterEqual(len(by_id["toy_mona_lisa"]["steps"]), 2)
+        self.assertNotEqual(by_id["toy_mona_lisa"]["steps"][0]["tool_type"], "stop")
+
     def test_dagig_reward_debug_8_samples(self):
         rows = dagig_reward_debug_rollout(toy_samples())
         self.assertEqual(len(rows), 8)
@@ -25,4 +35,3 @@ class RolloutSmokeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

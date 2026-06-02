@@ -4,7 +4,8 @@ import time
 from dataclasses import asdict
 from typing import Any
 
-from agent.policy_wrapper import SimpleTokenizer
+from agent.parser import ParsedAction, parse_action
+from agent.policy_wrapper import PolicyWrapper, SimpleTokenizer
 from data.schema import VQASample
 from eval.metrics import exact_match, tool_stats
 from reward.dag_ig import DAGIGLiteReward
@@ -161,6 +162,100 @@ def prompted_search_rollout(
     return rows, trajectories
 
 
+def agentic_search_rollout(
+    samples: list[VQASample],
+    search_topk: int = 5,
+    text_index_path: str = "data/indexes/text_corpus.jsonl",
+    image_index_path: str = "data/indexes/image_corpus.jsonl",
+    policy: PolicyWrapper | None = None,
+) -> tuple[list[dict[str, Any]], list[Trajectory]]:
+    """A lightweight rollout path where the first action can be stop or search.
+
+    This is intentionally not a training rollout. It is a controlled smoke test
+    for over-search and under-search diagnostics before connecting veRL/MMSearch.
+    """
+
+    dispatcher = ToolDispatcher(
+        search_topk=search_topk,
+        text_index_path=text_index_path,
+        image_index_path=image_index_path,
+    )
+    tokenizer = SimpleTokenizer()
+    policy = policy or PolicyWrapper(tokenizer=tokenizer)
+    rows: list[dict[str, Any]] = []
+    trajectories: list[Trajectory] = []
+    for sample in samples:
+        start = time.time()
+        span = 0
+        context = f"Question: {sample.question}"
+        steps: list[ToolStep] = []
+        invalid_action = 0
+        direct_answer = _direct_answer(sample.question)
+        needs_search = bool(sample.metadata.get("needs_search", direct_answer == "unknown"))
+
+        parsed = _first_agent_action(sample, policy, needs_search, direct_answer)
+        invalid_action = int(not parsed.valid)
+        if parsed.tool_type == "stop":
+            answer = parsed.action_text or direct_answer
+            step, span, context = _make_stop_step(sample, answer, span, tokenizer, context)
+            steps.append(step)
+        else:
+            tool_type = parsed.tool_type if parsed.tool_type in {"text_search", "image_search"} else _default_search_tool(sample)
+            action = parsed.action_text or _default_search_query(sample)
+            result = dispatcher.run(tool_type, action, topk=search_topk)
+            answer = _answer_from_observation(result.raw_observation, fallback=direct_answer if direct_answer != "unknown" else "unknown")
+            step0, span, context = _make_step(
+                0,
+                tool_type,
+                action,
+                result.raw_observation,
+                result.evidence_summary,
+                span,
+                tokenizer,
+                sample.question,
+                context,
+                {"success": result.success, "answer": answer, "sample_id": sample.sample_id},
+            )
+            steps.append(step0)
+            step1, span, context = _make_stop_step(sample, answer, span, tokenizer, context, step_id=1)
+            steps.append(step1)
+
+        correct = exact_match(steps[-1].action_text if steps else "", sample.gold_answers)
+        trajectory = Trajectory(
+            sample_id=sample.sample_id,
+            question=sample.question,
+            images=sample.images,
+            gold_answers=sample.gold_answers,
+            steps=steps,
+            final_answer=steps[-1].action_text if steps else "",
+            final_correct=correct,
+            full_prompt=sample.question,
+            full_response="\n".join(step.action_text for step in steps),
+            metadata={
+                "response_token_count": span,
+                "tool_free_answers": _tool_free_probe_answers(sample, direct_answer, needs_search),
+                "rollout_mode": "agentic_search",
+            },
+        )
+        trajectories.append(trajectory)
+        row_steps = [{**asdict(step), "success": step.metadata.get("success", True)} for step in steps]
+        rows.append(
+            {
+                "sample_id": sample.sample_id,
+                "question": sample.question,
+                "gold_answers": sample.gold_answers,
+                "final_answer": trajectory.final_answer,
+                "final_correct": correct,
+                "steps": row_steps,
+                "tool_stats": tool_stats(row_steps),
+                "latency": time.time() - start,
+                "method": "agentic_search",
+                "invalid_action": invalid_action,
+            }
+        )
+    return rows, trajectories
+
+
 def dagig_reward_debug_rollout(samples: list[VQASample]) -> list[dict[str, Any]]:
     rows, trajectories = prompted_search_rollout(samples)
     reward = DAGIGLiteReward(lambda_dep=0.5, alpha=1.0, beta=0.2, gamma=0.05)
@@ -200,3 +295,59 @@ def _direct_answer(question: str) -> str:
     if "sydney opera" in q:
         return "Sydney"
     return "unknown"
+
+
+def _first_agent_action(sample: VQASample, policy: PolicyWrapper, needs_search: bool, direct_answer: str) -> ParsedAction:
+    if not needs_search and direct_answer != "unknown":
+        return ParsedAction("stop", direct_answer, {"answer": direct_answer, "source": "tool_free"}, True)
+    prompt = (
+        "You are a multimodal search agent. Return one JSON action with tool in "
+        "{text_search,image_search,stop} and an action string.\n"
+        f"Question: {sample.question}"
+    )
+    parsed = parse_action(policy.generate(prompt).text)
+    if parsed.tool_type == "stop" and (not parsed.action_text or parsed.action_text == "unknown") and needs_search:
+        return ParsedAction(_default_search_tool(sample), _default_search_query(sample), {"source": "needs_search_fallback"}, True)
+    if parsed.tool_type not in {"text_search", "image_search", "stop"}:
+        return ParsedAction(_default_search_tool(sample), _default_search_query(sample), {"source": "invalid_tool_fallback"}, False)
+    return parsed
+
+
+def _default_search_tool(sample: VQASample) -> str:
+    question = sample.question.lower()
+    image_terms = ("image", "shown", "pictured", "photo", "visual", "bridge")
+    return "image_search" if any(term in question for term in image_terms) or sample.images else "text_search"
+
+
+def _default_search_query(sample: VQASample) -> str:
+    return sample.question
+
+
+def _tool_free_probe_answers(sample: VQASample, direct_answer: str, needs_search: bool) -> list[str]:
+    if not needs_search and direct_answer != "unknown":
+        return [direct_answer, direct_answer, direct_answer]
+    return ["unknown", direct_answer, "uncertain"]
+
+
+def _make_stop_step(
+    sample: VQASample,
+    answer: str,
+    span: int,
+    tokenizer: SimpleTokenizer,
+    context: str,
+    step_id: int = 0,
+) -> tuple[ToolStep, int, str]:
+    dispatcher = ToolDispatcher()
+    stop_result = dispatcher.run("stop", answer)
+    return _make_step(
+        step_id,
+        "stop",
+        answer,
+        stop_result.raw_observation,
+        stop_result.evidence_summary,
+        span,
+        tokenizer,
+        sample.question,
+        context,
+        {"success": True, "answer": answer, "sample_id": sample.sample_id},
+    )
