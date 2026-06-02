@@ -176,3 +176,15 @@ make model_agent_rollout
 ```
 
 This writes `results/model_agent/model_agent_rollout.jsonl` and `paper_artifacts/tables/model_agent_rollout.csv`. Unlike the smoke fallback, this default mode does not force a search when the model stops early and does not repair invalid JSON. Use it to measure raw `invalid_action_rate`, under-search, tool choice, and query quality before training.
+
+If the raw model emits multiple JSON snippets or placeholder actions such as `"action":"query"`, the parser keeps the best valid action and the rollout repairs placeholder search actions to the current question. To score DAG-IG rewards on the generated model-agent trajectories, enable:
+
+```bash
+DAGIG_MODEL_AGENT_SCORE_REWARD=1 \
+DAGIG_MODEL_AGENT_CF_SAMPLES=2 \
+DAGIG_MODEL_AGENT_LIMIT=32 \
+DAGIG_MODEL_AGENT_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_MODEL_AGENT_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_MODEL_AGENT_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+make model_agent_rollout
+```

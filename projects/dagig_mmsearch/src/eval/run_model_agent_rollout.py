@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 
 from agent.policy_wrapper import PolicyWrapper, SimpleTokenizer
 from agent.rollout import agentic_search_rollout
 from data.dataset_mixer import read_samples_jsonl
 from data.schema import toy_samples
 from eval.metrics import aggregate_rollouts
+from eval.statistics import reward_diagnostics
+from reward.dag_ig import DAGIGLiteReward
+from reward.future_action_ig import FutureActionIGScorer
+from reward.local_ig import LocalIGScorer
+from reward.typed_pool import TypedCounterfactualPool
 from train.trainer_utils import load_config
 from utils.gpu_check import main as print_gpu_check
 from utils.hf_reference import load_reference_policy_from_config
@@ -28,6 +34,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scripted-direct-stop", action="store_true")
     parser.add_argument("--force-search-when-needed", action="store_true")
     parser.add_argument("--fallback-on-invalid", action="store_true")
+    parser.add_argument("--score-reward", action="store_true")
+    parser.add_argument("--cf-samples", type=int, default=2)
     return parser.parse_args()
 
 
@@ -38,7 +46,7 @@ def main() -> None:
     hf_policy = load_reference_policy_from_config(cfg)
     policy = PolicyWrapper(model=hf_policy, tokenizer=SimpleTokenizer())
     samples = read_samples_jsonl(args.samples_jsonl) if args.samples_jsonl else toy_samples()
-    rows, _ = agentic_search_rollout(
+    rows, trajectories = agentic_search_rollout(
         samples[: args.limit],
         text_index_path=args.text_index,
         image_index_path=args.image_index,
@@ -51,10 +59,58 @@ def main() -> None:
     )
     for row in rows:
         row["method"] = args.method
+    if args.score_reward:
+        attach_dagig_rewards(rows, trajectories, hf_policy, cfg, args.cf_samples)
     write_jsonl(args.output, rows)
-    write_csv(args.table_output, [aggregate_rollouts(rows, args.method)])
+    summary = aggregate_rollouts(rows, args.method)
+    if args.score_reward:
+        summary.update(reward_diagnostics(rows))
+    write_csv(args.table_output, [summary])
     print(f"saved {args.output}")
     print(f"saved {args.table_output}")
+
+
+def attach_dagig_rewards(rows, trajectories, policy, cfg, cf_samples: int) -> None:
+    cf_pool = TypedCounterfactualPool()
+    reward = DAGIGLiteReward(
+        cf_pool=cf_pool,
+        local_ig_scorer=LocalIGScorer(
+            model=policy,
+            cf_pool=cf_pool,
+            cf_samples=cf_samples,
+            dead_zone=float(cfg.get("reward", {}).get("dead_zone", 0.02)),
+            negative_scale=float(cfg.get("reward", {}).get("negative_scale", 0.25)),
+        ),
+        future_action_ig_scorer=FutureActionIGScorer(
+            model=policy,
+            cf_pool=cf_pool,
+            cf_samples=cf_samples,
+            dead_zone=float(cfg.get("reward", {}).get("dead_zone", 0.02)),
+            positive_only=bool(cfg.get("reward", {}).get("positive_only_future", True)),
+        ),
+        lambda_dep=float(cfg.get("reward", {}).get("lambda_dep", 0.5)),
+        alpha=float(cfg.get("reward", {}).get("local_ig_weight", 0.4)),
+        beta=float(cfg.get("reward", {}).get("gate_weight", 0.2)),
+        gamma=float(cfg.get("reward", {}).get("cost_weight", 0.05)),
+    )
+    for row, trajectory in zip(rows, trajectories):
+        output = reward.compute(trajectory)
+        by_step = {item.step_id: item for item in output.step_rewards}
+        for step in row.get("steps", []):
+            step_reward = by_step[step["step_id"]]
+            step.update(
+                {
+                    "local_ig": step_reward.local_ig,
+                    "future_action_ig": step_reward.future_action_ig,
+                    "propagated_return": step_reward.propagated_return,
+                    "gate_reward": step_reward.gate_reward,
+                    "cost_penalty": step_reward.cost_penalty,
+                    "total_step_reward": step_reward.total_step_reward,
+                    "reward_diagnostics": asdict(step_reward),
+                }
+            )
+        row["token_rewards"] = output.token_rewards
+        row["reward_diagnostics"] = output.diagnostics
 
 
 if __name__ == "__main__":

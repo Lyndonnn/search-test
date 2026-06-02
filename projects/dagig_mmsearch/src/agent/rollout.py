@@ -4,7 +4,7 @@ import time
 from dataclasses import asdict
 from typing import Any
 
-from agent.parser import ParsedAction, parse_action
+from agent.parser import PLACEHOLDER_ACTIONS, ParsedAction, parse_action
 from agent.policy_wrapper import PolicyWrapper, SimpleTokenizer
 from data.schema import VQASample
 from eval.metrics import exact_match, tool_stats
@@ -209,6 +209,7 @@ def agentic_search_rollout(
             max_new_tokens=max_new_tokens,
             temperature=temperature,
         )
+        parsed = _repair_placeholder_action(sample, parsed)
         allowed_tools = {"text_search", "image_search", "stop"}
         invalid_action = int((not parsed.valid) or parsed.tool_type not in allowed_tools)
         if parsed.tool_type == "stop":
@@ -333,12 +334,13 @@ def _first_agent_action(
         return ParsedAction("stop", direct_answer, {"answer": direct_answer, "source": "tool_free"}, True)
     prompt = (
         "You are a multimodal search agent.\n"
-        "Return exactly one JSON object and no extra text.\n"
-        'Allowed forms: {"tool":"text_search","action":"query"}, '
-        '{"tool":"image_search","action":"visual query"}, '
-        '{"tool":"stop","action":"final answer"}.\n'
-        "Use search if the answer is not directly known.\n"
-        f"Question: {sample.question}"
+        "Return exactly one compact JSON object and no prose.\n"
+        "Allowed tools: text_search, image_search, stop.\n"
+        "For search, action must be a concrete query copied from the question, not the word query.\n"
+        "For stop, action must be the final answer, not the words final answer.\n"
+        "If you are uncertain, choose text_search.\n"
+        f"Question: {sample.question}\n"
+        "JSON only:"
     )
     output = policy.generate(prompt, max_new_tokens=max_new_tokens, temperature=temperature)
     parsed = parse_action(output.text)
@@ -353,6 +355,21 @@ def _first_agent_action(
         return ParsedAction(_default_search_tool(sample), _default_search_query(sample), {"source": "needs_search_fallback"}, True)
     if fallback_on_invalid and parsed.tool_type not in {"text_search", "image_search", "stop"}:
         return ParsedAction(_default_search_tool(sample), _default_search_query(sample), {"source": "invalid_tool_fallback"}, False)
+    return parsed
+
+
+def _repair_placeholder_action(sample: VQASample, parsed: ParsedAction) -> ParsedAction:
+    action = parsed.action_text.strip()
+    if parsed.tool_type in {"text_search", "image_search"} and action.lower() in PLACEHOLDER_ACTIONS:
+        args = dict(parsed.arguments)
+        args["original_action"] = parsed.action_text
+        args["action_repair"] = "placeholder_to_question"
+        return ParsedAction(parsed.tool_type, sample.question, args, parsed.valid, parsed.error)
+    if parsed.tool_type == "stop" and action.lower() in PLACEHOLDER_ACTIONS:
+        args = dict(parsed.arguments)
+        args["original_action"] = parsed.action_text
+        args["action_repair"] = "placeholder_to_unknown"
+        return ParsedAction("stop", "unknown", args, False, parsed.error or "placeholder_stop_action")
     return parsed
 
 

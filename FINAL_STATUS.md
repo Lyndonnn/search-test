@@ -89,7 +89,10 @@ Updated: 2026-06-02
 - reference ablation step-level delta diagnostic table
 - lightweight agentic rollout smoke entrypoint
 - Qwen/HF model-agent rollout entrypoint
-  - 29 passing smoke tests
+- robust action parser for multi-JSON model outputs
+- placeholder search-action repair for `"action":"query"` outputs
+- optional DAG-IG reward scoring on model-agent trajectories
+- 32 passing smoke tests
 - Production A800 training is not yet complete because this local environment has no CUDA GPU and no model download was attempted.
 
 ## Next Most Important Command
@@ -154,6 +157,18 @@ make agent_rollout_smoke
 Then run raw Qwen model-agent rollout:
 
 ```bash
+DAGIG_MODEL_AGENT_LIMIT=32 \
+DAGIG_MODEL_AGENT_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_MODEL_AGENT_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_MODEL_AGENT_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+make model_agent_rollout
+```
+
+If raw Qwen copies placeholder JSON or emits multiple JSON objects, rerun after this parser update. To attach DAG-IG rewards to model-agent trajectories:
+
+```bash
+DAGIG_MODEL_AGENT_SCORE_REWARD=1 \
+DAGIG_MODEL_AGENT_CF_SAMPLES=2 \
 DAGIG_MODEL_AGENT_LIMIT=32 \
 DAGIG_MODEL_AGENT_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
 DAGIG_MODEL_AGENT_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \

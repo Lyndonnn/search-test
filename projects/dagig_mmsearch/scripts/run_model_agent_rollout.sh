@@ -22,6 +22,7 @@ ARGS=(
   --method "${DAGIG_MODEL_AGENT_METHOD:-model_agent_qwen25vl3b}"
   --max-new-tokens "${DAGIG_MODEL_AGENT_MAX_NEW_TOKENS:-96}"
   --temperature "${DAGIG_MODEL_AGENT_TEMPERATURE:-0.0}"
+  --cf-samples "${DAGIG_MODEL_AGENT_CF_SAMPLES:-2}"
 )
 
 if [ -n "$SAMPLES_JSONL" ]; then
@@ -41,6 +42,9 @@ if [ "${DAGIG_MODEL_AGENT_FORCE_SEARCH_WHEN_NEEDED:-0}" = "1" ]; then
 fi
 if [ "${DAGIG_MODEL_AGENT_FALLBACK_ON_INVALID:-0}" = "1" ]; then
   ARGS+=(--fallback-on-invalid)
+fi
+if [ "${DAGIG_MODEL_AGENT_SCORE_REWARD:-0}" = "1" ]; then
+  ARGS+=(--score-reward)
 fi
 
 python3 -m eval.run_model_agent_rollout "${ARGS[@]}"

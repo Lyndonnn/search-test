@@ -43,6 +43,23 @@ class RolloutSmokeTest(unittest.TestCase):
         self.assertEqual(rows[0]["steps"][0]["tool_type"], "stop")
         self.assertEqual(len(rows[0]["steps"]), 1)
 
+    def test_placeholder_search_action_repairs_to_question(self):
+        class PlaceholderSearchModel:
+            def generate_text(self, prompt, **kwargs):
+                return '{"tool":"text_search","action":"query"}'
+
+        sample = toy_samples()[1]
+        rows, _ = agentic_search_rollout(
+            [sample],
+            policy=PolicyWrapper(model=PlaceholderSearchModel()),
+            scripted_direct_stop=False,
+            force_search_when_needed=False,
+            fallback_on_invalid=False,
+        )
+
+        self.assertEqual(rows[0]["steps"][0]["tool_type"], "text_search")
+        self.assertEqual(rows[0]["steps"][0]["action_text"], sample.question)
+
     def test_dagig_reward_debug_8_samples(self):
         rows = dagig_reward_debug_rollout(toy_samples())
         self.assertEqual(len(rows), 8)
