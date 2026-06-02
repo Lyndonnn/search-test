@@ -21,6 +21,7 @@ ARGS=(
   --rollout-mode "${DAGIG_ABLATION_ROLLOUT_MODE:-prompted}"
   --output-dir "${DAGIG_ABLATION_OUTPUT_DIR:-results/ablations}"
   --table-output "${DAGIG_ABLATION_TABLE_OUTPUT:-paper_artifacts/tables/reference_ablation.csv}"
+  --delta-output "${DAGIG_ABLATION_DELTA_OUTPUT:-paper_artifacts/tables/reference_ablation_delta.csv}"
   --method-prefix "${DAGIG_ABLATION_METHOD_PREFIX:-reference_ablation}"
   --variants "${DAGIG_ABLATION_VARIANTS:-local_ig_only,dagig_lite,dagig_no_gate,dagig_no_cost,lambda_0,lambda_025,lambda_05,lambda_1}"
 )

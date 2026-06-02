@@ -1,2 +1,2 @@
 method,exact_match,token_f1,accuracy,avg_tool_calls,avg_search_rounds,avg_latency,answer_per_tool_call,tool_call_success_rate,invalid_action_rate,over_search_rate,under_search_rate
-agentic_search,0.875,0.875,0.875,1.625,1.625,0.00016623735427856445,0.5384615384615384,1.0,0.0,0.0,0.0
+agentic_search,0.875,0.875,0.875,1.625,1.625,0.00015524029731750488,0.5384615384615384,1.0,0.0,0.0,0.0

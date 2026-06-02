@@ -168,6 +168,11 @@ def agentic_search_rollout(
     text_index_path: str = "data/indexes/text_corpus.jsonl",
     image_index_path: str = "data/indexes/image_corpus.jsonl",
     policy: PolicyWrapper | None = None,
+    scripted_direct_stop: bool = True,
+    force_search_when_needed: bool = True,
+    fallback_on_invalid: bool = True,
+    max_new_tokens: int = 96,
+    temperature: float = 0.0,
 ) -> tuple[list[dict[str, Any]], list[Trajectory]]:
     """A lightweight rollout path where the first action can be stop or search.
 
@@ -193,13 +198,24 @@ def agentic_search_rollout(
         direct_answer = _direct_answer(sample.question)
         needs_search = bool(sample.metadata.get("needs_search", direct_answer == "unknown"))
 
-        parsed = _first_agent_action(sample, policy, needs_search, direct_answer)
-        invalid_action = int(not parsed.valid)
+        parsed = _first_agent_action(
+            sample,
+            policy,
+            needs_search,
+            direct_answer,
+            scripted_direct_stop=scripted_direct_stop,
+            force_search_when_needed=force_search_when_needed,
+            fallback_on_invalid=fallback_on_invalid,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+        )
+        allowed_tools = {"text_search", "image_search", "stop"}
+        invalid_action = int((not parsed.valid) or parsed.tool_type not in allowed_tools)
         if parsed.tool_type == "stop":
             answer = parsed.action_text or direct_answer
             step, span, context = _make_stop_step(sample, answer, span, tokenizer, context)
             steps.append(step)
-        else:
+        elif parsed.tool_type in {"text_search", "image_search"}:
             tool_type = parsed.tool_type if parsed.tool_type in {"text_search", "image_search"} else _default_search_tool(sample)
             action = parsed.action_text or _default_search_query(sample)
             result = dispatcher.run(tool_type, action, topk=search_topk)
@@ -219,6 +235,10 @@ def agentic_search_rollout(
             steps.append(step0)
             step1, span, context = _make_stop_step(sample, answer, span, tokenizer, context, step_id=1)
             steps.append(step1)
+        else:
+            answer = parsed.action_text or "unknown"
+            step, span, context = _make_stop_step(sample, answer, span, tokenizer, context)
+            steps.append(step)
 
         correct = exact_match(steps[-1].action_text if steps else "", sample.gold_answers)
         trajectory = Trajectory(
@@ -251,6 +271,7 @@ def agentic_search_rollout(
                 "latency": time.time() - start,
                 "method": "agentic_search",
                 "invalid_action": invalid_action,
+                "policy_action": parsed.arguments,
             }
         )
     return rows, trajectories
@@ -297,18 +318,40 @@ def _direct_answer(question: str) -> str:
     return "unknown"
 
 
-def _first_agent_action(sample: VQASample, policy: PolicyWrapper, needs_search: bool, direct_answer: str) -> ParsedAction:
-    if not needs_search and direct_answer != "unknown":
+def _first_agent_action(
+    sample: VQASample,
+    policy: PolicyWrapper,
+    needs_search: bool,
+    direct_answer: str,
+    scripted_direct_stop: bool = True,
+    force_search_when_needed: bool = True,
+    fallback_on_invalid: bool = True,
+    max_new_tokens: int = 96,
+    temperature: float = 0.0,
+) -> ParsedAction:
+    if scripted_direct_stop and not needs_search and direct_answer != "unknown":
         return ParsedAction("stop", direct_answer, {"answer": direct_answer, "source": "tool_free"}, True)
     prompt = (
-        "You are a multimodal search agent. Return one JSON action with tool in "
-        "{text_search,image_search,stop} and an action string.\n"
+        "You are a multimodal search agent.\n"
+        "Return exactly one JSON object and no extra text.\n"
+        'Allowed forms: {"tool":"text_search","action":"query"}, '
+        '{"tool":"image_search","action":"visual query"}, '
+        '{"tool":"stop","action":"final answer"}.\n'
+        "Use search if the answer is not directly known.\n"
         f"Question: {sample.question}"
     )
-    parsed = parse_action(policy.generate(prompt).text)
-    if parsed.tool_type == "stop" and (not parsed.action_text or parsed.action_text == "unknown") and needs_search:
+    output = policy.generate(prompt, max_new_tokens=max_new_tokens, temperature=temperature)
+    parsed = parse_action(output.text)
+    parsed.arguments.setdefault("raw_policy_output", output.text)
+    parsed.arguments.setdefault("policy_metadata", output.metadata)
+    if (
+        force_search_when_needed
+        and parsed.tool_type == "stop"
+        and (not parsed.action_text or parsed.action_text == "unknown")
+        and needs_search
+    ):
         return ParsedAction(_default_search_tool(sample), _default_search_query(sample), {"source": "needs_search_fallback"}, True)
-    if parsed.tool_type not in {"text_search", "image_search", "stop"}:
+    if fallback_on_invalid and parsed.tool_type not in {"text_search", "image_search", "stop"}:
         return ParsedAction(_default_search_tool(sample), _default_search_query(sample), {"source": "invalid_tool_fallback"}, False)
     return parsed
 

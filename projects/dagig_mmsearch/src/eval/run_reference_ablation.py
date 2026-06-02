@@ -44,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rollout-mode", choices=["prompted", "agentic"], default="prompted")
     parser.add_argument("--output-dir", default="results/ablations")
     parser.add_argument("--table-output", default="paper_artifacts/tables/reference_ablation.csv")
+    parser.add_argument("--delta-output", default="paper_artifacts/tables/reference_ablation_delta.csv")
     parser.add_argument("--method-prefix", default="reference_ablation")
     parser.add_argument(
         "--variants",
@@ -99,9 +100,11 @@ def main() -> None:
     output_dir = ensure_dir(args.output_dir)
     summaries: list[dict[str, Any]] = []
     all_rows: list[dict[str, Any]] = []
+    rows_by_variant: dict[str, list[dict[str, Any]]] = {}
     for variant in variants:
         method = f"{args.method_prefix}_{variant.name}"
         rows = materialize_variant_rows(base_rows, trajectories, base_outputs, variant, method)
+        rows_by_variant[variant.name] = rows
         write_jsonl(Path(output_dir) / f"{variant.name}.jsonl", rows)
         summary = aggregate_rollouts(rows, method)
         summary.update(reward_diagnostics(rows))
@@ -121,8 +124,12 @@ def main() -> None:
 
     write_jsonl(Path(output_dir) / "reference_ablation_all.jsonl", all_rows)
     write_csv(args.table_output, summaries)
+    if "local_ig_only" in rows_by_variant and "dagig_lite" in rows_by_variant:
+        delta_rows = build_delta_rows(rows_by_variant["local_ig_only"], rows_by_variant["dagig_lite"])
+        write_csv(args.delta_output, delta_rows)
     print(f"saved ablation rows to {output_dir}")
     print(f"saved ablation table to {args.table_output}")
+    print(f"saved delta table to {args.delta_output}")
 
 
 def build_variants(raw_names: str, cfg: dict[str, Any]) -> list[AblationVariant]:
@@ -226,6 +233,51 @@ def materialize_variant_rows(
     return rows
 
 
+def build_delta_rows(local_rows: list[dict[str, Any]], dagig_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for local_row, dagig_row in zip(local_rows, dagig_rows):
+        local_steps = {int(step["step_id"]): step for step in local_row.get("steps", [])}
+        dagig_steps = {int(step["step_id"]): step for step in dagig_row.get("steps", [])}
+        ordered_ids = sorted(dagig_steps)
+        for idx, step_id in enumerate(ordered_ids):
+            dagig_step = dagig_steps[step_id]
+            local_step = local_steps.get(step_id, {})
+            next_step_id = ordered_ids[idx + 1] if idx + 1 < len(ordered_ids) else None
+            next_step = dagig_steps.get(next_step_id, {}) if next_step_id is not None else {}
+            total_delta = float(dagig_step.get("total_step_reward", 0.0)) - float(local_step.get("total_step_reward", 0.0))
+            propagated_delta = float(dagig_step.get("propagated_return", 0.0)) - float(local_step.get("propagated_return", 0.0))
+            future_ig = float(dagig_step.get("future_action_ig", 0.0))
+            next_local_ig = float(next_step.get("local_ig", 0.0)) if next_step else 0.0
+            rows.append(
+                {
+                    "sample_id": dagig_row.get("sample_id", ""),
+                    "question": dagig_row.get("question", ""),
+                    "final_correct": dagig_row.get("final_correct", False),
+                    "final_answer": dagig_row.get("final_answer", ""),
+                    "step_id": step_id,
+                    "tool_type": dagig_step.get("tool_type", ""),
+                    "target_step_id": next_step_id if next_step_id is not None else "",
+                    "target_tool_type": next_step.get("tool_type", "") if next_step else "",
+                    "local_ig": float(dagig_step.get("local_ig", 0.0)),
+                    "future_action_ig": future_ig,
+                    "next_local_ig": next_local_ig,
+                    "future_edge_active": future_ig > 0.0,
+                    "future_credit_eligible": future_ig > 0.0 and next_local_ig > 0.0,
+                    "local_only_propagated_return": float(local_step.get("propagated_return", 0.0)),
+                    "dagig_propagated_return": float(dagig_step.get("propagated_return", 0.0)),
+                    "propagated_delta": propagated_delta,
+                    "local_only_total_reward": float(local_step.get("total_step_reward", 0.0)),
+                    "dagig_total_reward": float(dagig_step.get("total_step_reward", 0.0)),
+                    "total_reward_delta": total_delta,
+                    "gate_reward": float(dagig_step.get("gate_reward", 0.0)),
+                    "cost_penalty": float(dagig_step.get("cost_penalty", 0.0)),
+                    "action_length": _action_length(dagig_step),
+                    "is_tool_step": dagig_step.get("tool_type", "") != "stop",
+                }
+            )
+    return rows
+
+
 def _edge_values(step_rewards: list[StepReward], step_ids: list[int], use_future: bool) -> dict[tuple[int, int], float]:
     if not use_future:
         return {(src, tgt): 0.0 for src, tgt in zip(step_ids[:-1], step_ids[1:])}
@@ -250,6 +302,13 @@ def _parse_lambda(name: str) -> float:
     if suffix in {"1", "10", "100"}:
         return 1.0
     return float(suffix.replace("_", "."))
+
+
+def _action_length(step: dict[str, Any]) -> int:
+    span = step.get("action_span", [0, 0])
+    if isinstance(span, (list, tuple)) and len(span) == 2:
+        return max(1, int(span[1]) - int(span[0]))
+    return max(1, len(str(step.get("action_text", "")).split()))
 
 
 if __name__ == "__main__":

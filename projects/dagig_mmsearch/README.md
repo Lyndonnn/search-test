@@ -143,6 +143,12 @@ make reference_ablation
 
 This writes per-variant JSONL files under `results/ablations/` and the summary table `paper_artifacts/tables/reference_ablation.csv`. The default variants are `local_ig_only`, `dagig_lite`, `dagig_no_gate`, `dagig_no_cost`, and `lambda_dep` values `0`, `0.25`, `0.5`, `1.0`.
 
+It also writes `paper_artifacts/tables/reference_ablation_delta.csv`, a step-level comparison between `local_ig_only` and `dagig_lite`. Key fields:
+
+- `future_edge_active`: whether `d_i->i+1 > 0`
+- `future_credit_eligible`: whether `d_i->i+1 > 0` and `g_i+1 > 0`
+- `total_reward_delta`: how much more reward DAG-IG-Lite gives the step than Local-IG only
+
 To run the lightweight agent rollout smoke without loading Qwen:
 
 ```bash
@@ -158,3 +164,15 @@ This writes `results/agent_rollout/agentic_rollout_smoke.jsonl` and `paper_artif
 ```bash
 DAGIG_ABLATION_ROLLOUT_MODE=agentic make reference_ablation
 ```
+
+To run the first true model-agent action-generation pass with Qwen:
+
+```bash
+DAGIG_MODEL_AGENT_LIMIT=32 \
+DAGIG_MODEL_AGENT_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_MODEL_AGENT_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_MODEL_AGENT_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+make model_agent_rollout
+```
+
+This writes `results/model_agent/model_agent_rollout.jsonl` and `paper_artifacts/tables/model_agent_rollout.csv`. Unlike the smoke fallback, this default mode does not force a search when the model stops early and does not repair invalid JSON. Use it to measure raw `invalid_action_rate`, under-search, tool choice, and query quality before training.

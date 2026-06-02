@@ -85,9 +85,11 @@ Updated: 2026-06-02
   - tables and figures
   - reference-policy reward smoke entrypoint
   - FVQA small-data adapter with Colab finalization-abort tolerance
-  - reference reward ablation entrypoint
-  - lightweight agentic rollout smoke entrypoint
-  - 27 passing smoke tests
+- reference reward ablation entrypoint
+- reference ablation step-level delta diagnostic table
+- lightweight agentic rollout smoke entrypoint
+- Qwen/HF model-agent rollout entrypoint
+  - 29 passing smoke tests
 - Production A800 training is not yet complete because this local environment has no CUDA GPU and no model download was attempted.
 
 ## Next Most Important Command
@@ -134,6 +136,11 @@ DAGIG_ABLATION_METHOD_PREFIX=reference_ablation_fvqa_train \
 make reference_ablation
 ```
 
+Key output:
+
+- `paper_artifacts/tables/reference_ablation.csv`
+- `paper_artifacts/tables/reference_ablation_delta.csv`
+
 Then run lightweight agent rollout:
 
 ```bash
@@ -144,6 +151,16 @@ DAGIG_AGENT_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
 make agent_rollout_smoke
 ```
 
+Then run raw Qwen model-agent rollout:
+
+```bash
+DAGIG_MODEL_AGENT_LIMIT=32 \
+DAGIG_MODEL_AGENT_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_MODEL_AGENT_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_MODEL_AGENT_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+make model_agent_rollout
+```
+
 ## A100 Multi-Card Expansion Readiness
 
 - Not ready for production A100 multi-card expansion yet.
@@ -151,6 +168,7 @@ make agent_rollout_smoke
 - Required before starting full A100 work:
   - validate real reference-policy logprob scoring on A800 with `make reference_logprob_smoke`
   - validate FVQA 32/cf4 ablation table with `make reference_ablation`
+  - inspect raw Qwen model-agent invalid/under-search behavior with `make model_agent_rollout`
   - veRL reward-manager adapter
   - real MMSearch-R1 trajectory span extraction
   - crop/OCR/select rollout traces

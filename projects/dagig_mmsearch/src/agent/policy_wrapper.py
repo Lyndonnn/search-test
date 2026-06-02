@@ -24,9 +24,9 @@ class PolicyWrapper:
         self.model = model
         self.tokenizer = tokenizer or SimpleTokenizer()
 
-    def generate(self, prompt: str, **_: Any) -> PolicyOutput:
+    def generate(self, prompt: str, **kwargs: Any) -> PolicyOutput:
         if self.model is not None and hasattr(self.model, "generate_text"):
-            text = str(self.model.generate_text(prompt))
+            text = str(self.model.generate_text(prompt, **kwargs))
         else:
             text = self._scripted_response(prompt)
         return PolicyOutput(text=text, tokens=self.tokenizer.encode(text), metadata={"scripted": self.model is None})
@@ -40,4 +40,3 @@ class PolicyWrapper:
         if "golden gate" in prompt_l:
             return '{"tool": "image_search", "action": "Golden Gate Bridge"}'
         return '{"tool": "stop", "action": "unknown"}'
-

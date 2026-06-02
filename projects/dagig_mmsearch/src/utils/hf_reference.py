@@ -51,6 +51,27 @@ class HFReferencePolicy:
             token_log_probs = log_probs[:, start:end, :].gather(2, labels[:, start:end].unsqueeze(-1)).squeeze(-1)
             return float(token_log_probs.mean().item())
 
+    def generate_text(self, prompt: str, max_new_tokens: int = 96, temperature: float = 0.0) -> str:
+        import torch
+
+        with torch.no_grad():
+            input_ids = self._encode(prompt, add_special_tokens=True)
+            attention_mask = torch.ones_like(input_ids)
+            gen_kwargs: dict[str, Any] = {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "max_new_tokens": max_new_tokens,
+                "pad_token_id": getattr(self.tokenizer, "pad_token_id", None),
+                "eos_token_id": getattr(self.tokenizer, "eos_token_id", None),
+            }
+            if temperature and temperature > 0:
+                gen_kwargs.update({"do_sample": True, "temperature": temperature})
+            else:
+                gen_kwargs.update({"do_sample": False})
+            output_ids = self.model.generate(**{key: value for key, value in gen_kwargs.items() if value is not None})
+            new_tokens = output_ids[0, input_ids.shape[1] :]
+            return str(self.tokenizer.decode(new_tokens, skip_special_tokens=True)).strip()
+
     def _load(self) -> None:
         import torch
         import transformers
