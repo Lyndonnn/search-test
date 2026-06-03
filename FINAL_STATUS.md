@@ -96,7 +96,9 @@ Updated: 2026-06-02
 - answer-field stripping for model-visible search observations
 - answer-text redaction for gold-derived diagnostic snippets
 - final-answer-specific parser for second-turn stop generation
-- 38 passing smoke tests
+- non-leaky local retrieval corpus builder
+- non-leaky two-turn model-agent command
+- 39 passing smoke tests
 - Production A800 training is not yet complete because this local environment has no CUDA GPU and no model download was attempted.
 
 ## Next Most Important Command
@@ -192,6 +194,20 @@ make model_agent_rollout
 
 Use the same `DAGIG_MODEL_AGENT_SCORE_REWARD=1` flag with `make model_agent_two_turn` after two-turn invalid-action and accuracy diagnostics are stable.
 
+Next non-leaky retrieval diagnostic:
+
+```bash
+DAGIG_REAL_DATASET=fvqa \
+DAGIG_REAL_SPLIT=train \
+DAGIG_NONLEAKY_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+make prepare_nonleaky_corpus
+
+DAGIG_MODEL_AGENT_LIMIT=32 \
+make model_agent_two_turn_nonleaky
+```
+
+SerpAPI is not required yet. Use it only after local non-leaky BM25 has a stable rollout/evaluation protocol.
+
 ## A100 Multi-Card Expansion Readiness
 
 - Not ready for production A100 multi-card expansion yet.
@@ -201,6 +217,7 @@ Use the same `DAGIG_MODEL_AGENT_SCORE_REWARD=1` flag with `make model_agent_two_
   - validate FVQA 32/cf4 ablation table with `make reference_ablation`
   - inspect raw Qwen model-agent invalid/under-search behavior with `make model_agent_rollout`
   - validate non-oracle two-turn trajectories with `make model_agent_two_turn`
+  - validate non-leaky local retrieval with `make model_agent_two_turn_nonleaky`
   - veRL reward-manager adapter
   - real MMSearch-R1 trajectory span extraction
   - crop/OCR/select rollout traces

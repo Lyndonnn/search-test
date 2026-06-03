@@ -123,4 +123,5 @@ mmsearch_r1/data/*.parquet
 
 # DAG-IG local runtime caches
 data/cache/
+data/indexes/*nonleaky*.jsonl
 logs/*.tmp

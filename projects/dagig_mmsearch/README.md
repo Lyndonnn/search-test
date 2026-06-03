@@ -210,3 +210,29 @@ make model_agent_rollout
 ```
 
 Use the same reward flag with `make model_agent_two_turn` once the two-turn accuracy and invalid-action diagnostics are stable.
+
+## Non-Leaky Retrieval Step
+
+The gold-derived FVQA diagnostic index is useful for interface debugging only. Before any paper-style result, build a non-leaky retrieval index:
+
+```bash
+DAGIG_REAL_DATASET=fvqa \
+DAGIG_REAL_SPLIT=train \
+DAGIG_NONLEAKY_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+make prepare_nonleaky_corpus
+```
+
+Then run two-turn non-oracle search against that answer-hidden index:
+
+```bash
+DAGIG_MODEL_AGENT_LIMIT=32 \
+make model_agent_two_turn_nonleaky
+```
+
+This writes `paper_artifacts/tables/model_agent_two_turn_nonleaky.csv`. The non-leaky builder removes `answer` fields and redacts all known gold answer strings from local diagnostic snippets. Accuracy may be low; the goal is to validate the protocol before connecting real corpora.
+
+SerpAPI is not needed for this stage. Add SerpAPI only after local non-leaky BM25 works, because web search adds latency, API cost, unstable snippets, and harder reproducibility. The next real-search milestones are:
+
+1. local non-leaky BM25 over dataset/context/Wikipedia-like documents
+2. image index with CLIP/SigLIP embeddings
+3. optional SerpAPI or other web search as an external tool baseline
