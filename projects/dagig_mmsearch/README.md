@@ -191,6 +191,12 @@ make model_agent_two_turn
 
 This writes `results/model_agent/model_agent_two_turn.jsonl` and `paper_artifacts/tables/model_agent_two_turn.csv`. In this mode, the first model call generates the search action, the tool returns an answer-hidden evidence summary, and the second model call must generate the final stop answer. Search result `answer` fields are stripped before they enter the trajectory.
 
+For the current gold-derived diagnostic index, answer text is also redacted from model-visible snippets by default. This makes the diagnostic intentionally hard but prevents reporting oracle leakage as model answering ability. For a real non-leaky retrieval corpus where answer mentions are naturally part of documents, override with:
+
+```bash
+DAGIG_MODEL_AGENT_REDACT_OBSERVATION_ANSWERS=0 make model_agent_two_turn
+```
+
 If the raw model emits multiple JSON snippets or placeholder actions such as `"action":"query"`, the parser keeps the best valid action and the rollout repairs placeholder search actions to the current question. To score DAG-IG rewards on the generated model-agent trajectories, enable:
 
 ```bash

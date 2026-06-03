@@ -19,6 +19,48 @@ class ParsedAction:
     error: str = ""
 
 
+def parse_final_answer(text: str) -> ParsedAction:
+    raw = text.strip()
+    candidates: list[ParsedAction] = []
+    for obj_text in _extract_json_objects(raw):
+        try:
+            obj = json.loads(obj_text)
+        except Exception:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        action = str(obj.get("action", obj.get("tool", obj.get("tool_type", "")))).strip().lower()
+        if action in {"stop", "answer", "final_answer", "final"} or _has_answer_field(obj):
+            answer = _first_specific_value(obj, ["answer", "final_answer", "prediction", "response", "value"])
+            if not answer and action not in {"stop", "answer", "final_answer", "final"}:
+                answer = str(obj.get("action", ""))
+            valid = bool(answer.strip()) and answer.strip().lower() not in PLACEHOLDER_ACTIONS
+            candidates.append(
+                ParsedAction(
+                    "stop",
+                    answer.strip() if valid else "unknown",
+                    obj,
+                    valid,
+                    "" if valid else "missing_or_placeholder_final_answer",
+                )
+            )
+    if candidates:
+        return max(candidates, key=lambda item: (int(item.valid), len(item.action_text)))
+    answer_match = re.search(r"<answer>(.*?)</answer>", raw, re.DOTALL | re.IGNORECASE)
+    if answer_match:
+        answer = answer_match.group(1).strip()
+        return ParsedAction("stop", answer or "unknown", {"answer": answer}, bool(answer), "" if answer else "empty_answer_tag")
+    if "{" not in raw and "}" not in raw and len(raw.split()) <= 12:
+        answer = raw.strip()
+        valid = bool(answer) and answer.lower() not in PLACEHOLDER_ACTIONS
+        return ParsedAction("stop", answer if valid else "unknown", {"answer": answer}, valid, "" if valid else "placeholder_text_answer")
+    return ParsedAction("stop", raw or "unknown", {"answer": raw}, False, "no_final_answer")
+
+
+def _has_answer_field(obj: dict[str, Any]) -> bool:
+    return any(key in obj and obj[key] is not None for key in ("answer", "final_answer", "prediction", "response", "value"))
+
+
 def _extract_json_object(text: str) -> str | None:
     objects = _extract_json_objects(text)
     return objects[0] if objects else None

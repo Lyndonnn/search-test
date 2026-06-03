@@ -38,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fallback-on-invalid", action="store_true")
     parser.add_argument("--score-reward", action="store_true")
     parser.add_argument("--cf-samples", type=int, default=2)
+    parser.add_argument("--no-redact-observation-answers", action="store_true")
     return parser.parse_args()
 
 
@@ -57,6 +58,7 @@ def main() -> None:
             max_new_tokens=args.max_new_tokens,
             answer_max_new_tokens=args.answer_max_new_tokens,
             temperature=args.temperature,
+            redact_observation_answers=not args.no_redact_observation_answers,
         )
     else:
         rows, trajectories = agentic_search_rollout(

@@ -1,6 +1,6 @@
 import unittest
 
-from agent.parser import parse_action
+from agent.parser import parse_action, parse_final_answer
 
 
 class ParserTest(unittest.TestCase):
@@ -46,6 +46,17 @@ class ParserTest(unittest.TestCase):
         self.assertTrue(parsed.valid)
         self.assertEqual(parsed.tool_type, "image_search")
         self.assertEqual(parsed.action_text, "system shown in the image")
+
+    def test_final_answer_parser_accepts_answer_action(self):
+        parsed = parse_final_answer('{"action":"answer","answer":"hoarders"}')
+        self.assertTrue(parsed.valid)
+        self.assertEqual(parsed.tool_type, "stop")
+        self.assertEqual(parsed.action_text, "hoarders")
+
+    def test_final_answer_parser_rejects_search_observation_json(self):
+        parsed = parse_final_answer('{"action":"text_search","observation":[{"answer":"Sochi"}]}')
+        self.assertFalse(parsed.valid)
+        self.assertEqual(parsed.tool_type, "stop")
 
 
 if __name__ == "__main__":

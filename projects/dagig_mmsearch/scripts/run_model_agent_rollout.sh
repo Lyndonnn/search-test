@@ -48,5 +48,8 @@ fi
 if [ "${DAGIG_MODEL_AGENT_SCORE_REWARD:-0}" = "1" ]; then
   ARGS+=(--score-reward)
 fi
+if [ "${DAGIG_MODEL_AGENT_REDACT_OBSERVATION_ANSWERS:-1}" = "0" ]; then
+  ARGS+=(--no-redact-observation-answers)
+fi
 
 python3 -m eval.run_model_agent_rollout "${ARGS[@]}"

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import asdict
 from typing import Any
 
-from agent.parser import PLACEHOLDER_ACTIONS, ParsedAction, parse_action
+from agent.parser import PLACEHOLDER_ACTIONS, ParsedAction, parse_action, parse_final_answer
 from agent.policy_wrapper import PolicyWrapper, SimpleTokenizer
 from data.schema import VQASample
 from eval.metrics import exact_match, tool_stats
 from reward.dag_ig import DAGIGLiteReward
 from reward.types import ToolStep, Trajectory
+from tools.base import summarize_observation
 from tools.dispatcher import ToolDispatcher
 
 
@@ -287,6 +289,7 @@ def model_agent_two_turn_rollout(
     max_new_tokens: int = 96,
     answer_max_new_tokens: int = 64,
     temperature: float = 0.0,
+    redact_observation_answers: bool = True,
 ) -> tuple[list[dict[str, Any]], list[Trajectory]]:
     """Two-turn non-oracle rollout: model searches, observes, then answers.
 
@@ -331,7 +334,9 @@ def model_agent_two_turn_rollout(
         if first.tool_type in {"text_search", "image_search"} and not first_invalid:
             result = dispatcher.run(first.tool_type, first.action_text or sample.question, topk=search_topk)
             safe_raw = _strip_answer_fields(result.raw_observation)
-            safe_summary = result.evidence_summary
+            if redact_observation_answers:
+                safe_raw = _redact_answer_text(safe_raw, sample.gold_answers)
+            safe_summary = summarize_observation(first.tool_type, safe_raw, dispatcher.max_summary_tokens)
             step0, span, context = _make_step(
                 0,
                 first.tool_type,
@@ -545,7 +550,7 @@ def _final_answer_action(
         "JSON only:"
     )
     output = policy.generate(prompt, max_new_tokens=max_new_tokens, temperature=temperature)
-    parsed = parse_action(output.text)
+    parsed = parse_final_answer(output.text)
     parsed.arguments.setdefault("raw_policy_output", output.text)
     parsed.arguments.setdefault("policy_metadata", output.metadata)
     return parsed
@@ -559,6 +564,24 @@ def _strip_answer_fields(raw: Any) -> Any:
         return [_strip_answer_fields(item) for item in raw]
     if isinstance(raw, tuple):
         return tuple(_strip_answer_fields(item) for item in raw)
+    return raw
+
+
+def _redact_answer_text(raw: Any, gold_answers: list[str]) -> Any:
+    if isinstance(raw, dict):
+        return {key: _redact_answer_text(value, gold_answers) for key, value in raw.items()}
+    if isinstance(raw, list):
+        return [_redact_answer_text(item, gold_answers) for item in raw]
+    if isinstance(raw, tuple):
+        return tuple(_redact_answer_text(item, gold_answers) for item in raw)
+    if isinstance(raw, str):
+        text = raw
+        text = re.sub(r"(?i)\banswer\s*:\s*[^.。\n]+[.。]?", "Answer: [hidden]. ", text)
+        for answer in gold_answers:
+            answer = str(answer).strip()
+            if answer:
+                text = re.sub(re.escape(answer), "[hidden]", text, flags=re.IGNORECASE)
+        return text
     return raw
 
 

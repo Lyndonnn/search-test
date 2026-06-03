@@ -94,7 +94,9 @@ Updated: 2026-06-02
 - optional DAG-IG reward scoring on model-agent trajectories
 - two-turn non-oracle model-agent rollout entrypoint
 - answer-field stripping for model-visible search observations
-- 36 passing smoke tests
+- answer-text redaction for gold-derived diagnostic snippets
+- final-answer-specific parser for second-turn stop generation
+- 38 passing smoke tests
 - Production A800 training is not yet complete because this local environment has no CUDA GPU and no model download was attempted.
 
 ## Next Most Important Command

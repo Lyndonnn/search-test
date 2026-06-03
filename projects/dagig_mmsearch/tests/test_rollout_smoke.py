@@ -107,6 +107,7 @@ class RolloutSmokeTest(unittest.TestCase):
         search_raw = rows[0]["steps"][0]["raw_observation"]
         self.assertTrue(search_raw)
         self.assertFalse(any("answer" in item for item in search_raw))
+        self.assertNotIn("Louvre Museum", rows[0]["steps"][0]["evidence_summary"])
 
     def test_dagig_reward_debug_8_samples(self):
         rows = dagig_reward_debug_rollout(toy_samples())
