@@ -89,6 +89,8 @@ def _parse_json_action(obj: Any) -> ParsedAction | None:
     if not isinstance(obj, dict):
         return None
     tool = str(obj.get("tool") or obj.get("tool_type") or "").strip()
+    if not tool and str(obj.get("action", "")).strip().lower() in ALLOWED_TOOLS:
+        tool = str(obj.get("action", "")).strip()
     if not tool:
         return None
     tool = tool.lower()
@@ -100,10 +102,14 @@ def _parse_json_action(obj: Any) -> ParsedAction | None:
 
 def _action_text_for_tool(tool: str, obj: dict[str, Any]) -> str:
     if tool in {"text_search", "image_search"}:
+        if str(obj.get("action", "")).strip().lower() == tool:
+            return _first_specific_value(obj, ["query", "image_query", "caption", "text"]) or str(obj.get("query", ""))
         return _first_specific_value(obj, ["query", "action", "image_query", "caption", "text"]) or str(
             obj.get("action", obj.get("query", ""))
         )
     if tool == "stop":
+        if str(obj.get("action", "")).strip().lower() == "stop":
+            return _first_specific_value(obj, ["answer", "final_answer"]) or str(obj.get("answer", ""))
         return _first_specific_value(obj, ["answer", "final_answer", "action"]) or str(obj.get("action", obj.get("answer", "")))
     if tool == "select":
         return str(obj.get("index", obj.get("selected_index", obj.get("action", ""))))

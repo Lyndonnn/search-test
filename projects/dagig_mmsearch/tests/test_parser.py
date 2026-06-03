@@ -31,6 +31,22 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(parsed.tool_type, "text_search")
         self.assertEqual(parsed.action_text, "name of the organization")
 
+    def test_action_as_tool_schema(self):
+        parsed = parse_action('{"action":"text_search","query":"What country does this building belong to?"} {"action":"stop"}')
+        self.assertTrue(parsed.valid)
+        self.assertEqual(parsed.tool_type, "text_search")
+        self.assertEqual(parsed.action_text, "What country does this building belong to?")
+
+    def test_action_as_tool_prefers_specific_image_search(self):
+        parsed = parse_action(
+            '{"action":"image_search","query":"system shown in the image"} '
+            '{"action":"stop"} '
+            '{"action":"text_search","query":"What is the name of the system shown in the image?"}'
+        )
+        self.assertTrue(parsed.valid)
+        self.assertEqual(parsed.tool_type, "image_search")
+        self.assertEqual(parsed.action_text, "system shown in the image")
+
 
 if __name__ == "__main__":
     unittest.main()
