@@ -4,7 +4,7 @@ import argparse
 from dataclasses import asdict
 
 from agent.policy_wrapper import PolicyWrapper, SimpleTokenizer
-from agent.rollout import agentic_search_rollout
+from agent.rollout import agentic_search_rollout, model_agent_two_turn_rollout
 from data.dataset_mixer import read_samples_jsonl
 from data.schema import toy_samples
 from eval.metrics import aggregate_rollouts
@@ -30,7 +30,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--table-output", default="paper_artifacts/tables/model_agent_rollout.csv")
     parser.add_argument("--method", default="model_agent_qwen25vl3b")
     parser.add_argument("--max-new-tokens", type=int, default=96)
+    parser.add_argument("--answer-max-new-tokens", type=int, default=64)
     parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--rollout-mode", choices=["one_turn_oracle", "two_turn_non_oracle"], default="one_turn_oracle")
     parser.add_argument("--scripted-direct-stop", action="store_true")
     parser.add_argument("--force-search-when-needed", action="store_true")
     parser.add_argument("--fallback-on-invalid", action="store_true")
@@ -46,17 +48,28 @@ def main() -> None:
     hf_policy = load_reference_policy_from_config(cfg)
     policy = PolicyWrapper(model=hf_policy, tokenizer=SimpleTokenizer())
     samples = read_samples_jsonl(args.samples_jsonl) if args.samples_jsonl else toy_samples()
-    rows, trajectories = agentic_search_rollout(
-        samples[: args.limit],
-        text_index_path=args.text_index,
-        image_index_path=args.image_index,
-        policy=policy,
-        scripted_direct_stop=args.scripted_direct_stop,
-        force_search_when_needed=args.force_search_when_needed,
-        fallback_on_invalid=args.fallback_on_invalid,
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-    )
+    if args.rollout_mode == "two_turn_non_oracle":
+        rows, trajectories = model_agent_two_turn_rollout(
+            samples[: args.limit],
+            text_index_path=args.text_index,
+            image_index_path=args.image_index,
+            policy=policy,
+            max_new_tokens=args.max_new_tokens,
+            answer_max_new_tokens=args.answer_max_new_tokens,
+            temperature=args.temperature,
+        )
+    else:
+        rows, trajectories = agentic_search_rollout(
+            samples[: args.limit],
+            text_index_path=args.text_index,
+            image_index_path=args.image_index,
+            policy=policy,
+            scripted_direct_stop=args.scripted_direct_stop,
+            force_search_when_needed=args.force_search_when_needed,
+            fallback_on_invalid=args.fallback_on_invalid,
+            max_new_tokens=args.max_new_tokens,
+            temperature=args.temperature,
+        )
     for row in rows:
         row["method"] = args.method
     if args.score_reward:

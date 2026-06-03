@@ -3,7 +3,7 @@ DAGIG_ROOT := projects/dagig_mmsearch
 DAGIG_SRC := $(DAGIG_ROOT)/src
 export PYTHONPATH := $(DAGIG_SRC):$(PYTHONPATH)
 
-.PHONY: setup audit prepare_data prepare_real_data build_indexes smoke autodl_check hf_probe reference_logprob_smoke reference_ablation agent_rollout_smoke model_agent_rollout eval_nosearch eval_prompted train_outcome train_local_ig train_dagig_lite eval_all make_tables make_figures
+.PHONY: setup audit prepare_data prepare_real_data build_indexes smoke autodl_check hf_probe reference_logprob_smoke reference_ablation agent_rollout_smoke model_agent_rollout model_agent_two_turn eval_nosearch eval_prompted train_outcome train_local_ig train_dagig_lite eval_all make_tables make_figures
 
 setup:
 	bash $(DAGIG_ROOT)/scripts/setup_autodl_a800.sh
@@ -41,6 +41,9 @@ agent_rollout_smoke:
 
 model_agent_rollout:
 	bash $(DAGIG_ROOT)/scripts/run_model_agent_rollout.sh
+
+model_agent_two_turn:
+	bash $(DAGIG_ROOT)/scripts/run_model_agent_two_turn.sh
 
 eval_nosearch:
 	bash $(DAGIG_ROOT)/scripts/run_direct_vqa.sh

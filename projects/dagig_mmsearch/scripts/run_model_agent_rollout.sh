@@ -21,7 +21,9 @@ ARGS=(
   --table-output "${DAGIG_MODEL_AGENT_TABLE_OUTPUT:-paper_artifacts/tables/model_agent_rollout.csv}"
   --method "${DAGIG_MODEL_AGENT_METHOD:-model_agent_qwen25vl3b}"
   --max-new-tokens "${DAGIG_MODEL_AGENT_MAX_NEW_TOKENS:-96}"
+  --answer-max-new-tokens "${DAGIG_MODEL_AGENT_ANSWER_MAX_NEW_TOKENS:-64}"
   --temperature "${DAGIG_MODEL_AGENT_TEMPERATURE:-0.0}"
+  --rollout-mode "${DAGIG_MODEL_AGENT_ROLLOUT_MODE:-one_turn_oracle}"
   --cf-samples "${DAGIG_MODEL_AGENT_CF_SAMPLES:-2}"
 )
 

@@ -177,6 +177,20 @@ make model_agent_rollout
 
 This writes `results/model_agent/model_agent_rollout.jsonl` and `paper_artifacts/tables/model_agent_rollout.csv`. Unlike the smoke fallback, this default mode does not force a search when the model stops early and does not repair invalid JSON. Use it to measure raw `invalid_action_rate`, under-search, tool choice, and query quality before training.
 
+The default `model_agent_rollout` path is still a one-turn diagnostic: after a search action, it uses the local tool result's `answer` field to produce the stop step. Do not report its accuracy as a paper result.
+
+For the MMSearch-R1-style non-oracle protocol, run two turns:
+
+```bash
+DAGIG_MODEL_AGENT_LIMIT=32 \
+DAGIG_MODEL_AGENT_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_MODEL_AGENT_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_MODEL_AGENT_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+make model_agent_two_turn
+```
+
+This writes `results/model_agent/model_agent_two_turn.jsonl` and `paper_artifacts/tables/model_agent_two_turn.csv`. In this mode, the first model call generates the search action, the tool returns an answer-hidden evidence summary, and the second model call must generate the final stop answer. Search result `answer` fields are stripped before they enter the trajectory.
+
 If the raw model emits multiple JSON snippets or placeholder actions such as `"action":"query"`, the parser keeps the best valid action and the rollout repairs placeholder search actions to the current question. To score DAG-IG rewards on the generated model-agent trajectories, enable:
 
 ```bash
@@ -188,3 +202,5 @@ DAGIG_MODEL_AGENT_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
 DAGIG_MODEL_AGENT_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
 make model_agent_rollout
 ```
+
+Use the same reward flag with `make model_agent_two_turn` once the two-turn accuracy and invalid-action diagnostics are stable.

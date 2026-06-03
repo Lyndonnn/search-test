@@ -92,7 +92,9 @@ Updated: 2026-06-02
 - robust action parser for multi-JSON model outputs
 - placeholder search-action repair for `"action":"query"` outputs
 - optional DAG-IG reward scoring on model-agent trajectories
-- 32 passing smoke tests
+- two-turn non-oracle model-agent rollout entrypoint
+- answer-field stripping for model-visible search observations
+- 36 passing smoke tests
 - Production A800 training is not yet complete because this local environment has no CUDA GPU and no model download was attempted.
 
 ## Next Most Important Command
@@ -164,6 +166,16 @@ DAGIG_MODEL_AGENT_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
 make model_agent_rollout
 ```
 
+The raw one-turn rollout is diagnostic only because it still turns tool `answer` fields into a stop answer. The non-oracle MMSearch-R1-style rollout is:
+
+```bash
+DAGIG_MODEL_AGENT_LIMIT=32 \
+DAGIG_MODEL_AGENT_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_MODEL_AGENT_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_MODEL_AGENT_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+make model_agent_two_turn
+```
+
 If raw Qwen copies placeholder JSON or emits multiple JSON objects, rerun after this parser update. To attach DAG-IG rewards to model-agent trajectories:
 
 ```bash
@@ -176,6 +188,8 @@ DAGIG_MODEL_AGENT_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
 make model_agent_rollout
 ```
 
+Use the same `DAGIG_MODEL_AGENT_SCORE_REWARD=1` flag with `make model_agent_two_turn` after two-turn invalid-action and accuracy diagnostics are stable.
+
 ## A100 Multi-Card Expansion Readiness
 
 - Not ready for production A100 multi-card expansion yet.
@@ -184,6 +198,7 @@ make model_agent_rollout
   - validate real reference-policy logprob scoring on A800 with `make reference_logprob_smoke`
   - validate FVQA 32/cf4 ablation table with `make reference_ablation`
   - inspect raw Qwen model-agent invalid/under-search behavior with `make model_agent_rollout`
+  - validate non-oracle two-turn trajectories with `make model_agent_two_turn`
   - veRL reward-manager adapter
   - real MMSearch-R1 trajectory span extraction
   - crop/OCR/select rollout traces
