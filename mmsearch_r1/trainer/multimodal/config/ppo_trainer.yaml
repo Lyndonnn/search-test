@@ -27,7 +27,9 @@ actor_rollout_ref:
     external_lib: null
     override_config: { }
     enable_gradient_checkpointing: True
-    use_remove_padding: Falseva
+    use_remove_padding: False
+    attn_implementation: flash_attention_2
+    disable_monkey_patch: False
   actor:
     strategy: fsdp  # This is for backward-compatibility
     ppo_mini_batch_size: 256
@@ -139,6 +141,8 @@ critic:
     external_lib: ${actor_rollout_ref.model.external_lib}
     enable_gradient_checkpointing: True
     use_remove_padding: False
+    attn_implementation: ${actor_rollout_ref.model.attn_implementation}
+    disable_monkey_patch: ${actor_rollout_ref.model.disable_monkey_patch}
     fsdp_config:
       param_offload: False
       optimizer_offload: False

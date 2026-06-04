@@ -41,9 +41,10 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   data.user_prompt_after_text_search=mmsearch_r1/prompts/after_text_search_prompt_qwenvl.pkl \
   actor_rollout_ref.model.path="$MODEL_PATH" \
   actor_rollout_ref.model.attn_implementation="${ATTN_IMPLEMENTATION:-eager}" \
+  actor_rollout_ref.model.disable_monkey_patch="${DISABLE_MONKEY_PATCH:-True}" \
   actor_rollout_ref.actor.optim.lr="${ACTOR_LR:-1e-6}" \
   actor_rollout_ref.actor.optim.lr_sigmoid_decay_warmup=False \
-  actor_rollout_ref.model.use_remove_padding=True \
+  actor_rollout_ref.model.use_remove_padding="${USE_REMOVE_PADDING:-False}" \
   actor_rollout_ref.model.enable_gradient_checkpointing=True \
   actor_rollout_ref.actor.ppo_mini_batch_size="$PPO_MINI_BATCH_SIZE" \
   actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu="${PPO_MICRO_BATCH_SIZE_PER_GPU:-1}" \
