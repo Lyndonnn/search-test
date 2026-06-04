@@ -1,13 +1,13 @@
 # FINAL_STATUS
 
-Updated: 2026-06-02
+Updated: 2026-06-04
 
 ## Current Environment
 
 - Working directory: `/Users/lyndon/Desktop/search-test`
 - Python: 3.9.6
 - Platform: macOS-15.7.3-arm64-arm-64bit
-- Current run mode: local CPU smoke prototype
+- Current run mode: local code update for MMSearch-R1 mainline reproduction
 
 ## GPU Information
 
@@ -27,6 +27,9 @@ Updated: 2026-06-02
 - `make setup`
 - `make autodl_check`
 - `bash projects/dagig_mmsearch/scripts/clone_third_party.sh` completed with handled clone failures and wrote status output.
+- `bash -n scripts/prepare_mmsearch_r1_fvqa_debug.sh`
+- `bash -n mmsearch_r1/scripts/run_mmsearch_r1_val_only_a100_debug.sh`
+- `bash -n mmsearch_r1/scripts/run_mmsearch_r1_grpo_a100_debug.sh`
 
 ## Failed Commands
 
@@ -100,24 +103,39 @@ Updated: 2026-06-02
 - non-leaky two-turn model-agent command
 - 39 passing smoke tests
 - Production A800 training is not yet complete because this local environment has no CUDA GPU and no model download was attempted.
+- Mainline MMSearch-R1 reproduction entrypoints are now available:
+  - `make mmsearch_prepare_fvqa_debug`
+  - `make mmsearch_val_only`
+  - `make mmsearch_grpo_a100_debug`
+- The official GRPO script no longer assumes the repo directory is named `multimodal-search-r1`.
+- `val_only` now saves local validation generations even when using `trainer.logger=['console']`.
+- DAG-IG has not yet been inserted into the veRL/MMSearch-R1 reward manager. The next implementation target is `mmsearch_r1/workers/multimodal/reward/mmsearch_r1.py`.
 
 ## Next Most Important Command
 
-On AutoDL A800:
+Mainline MMSearch-R1 baseline on A100/A800:
 
 ```bash
-source projects/dagig_mmsearch/scripts/autodl_env.sh
-make autodl_check
-make hf_probe
-make setup
-make prepare_data
-make build_indexes
-make smoke
-make train_dagig_lite
-make reference_logprob_smoke
+pip install -r requirements.txt
+pip install -e ./verl
+make mmsearch_prepare_fvqa_debug
+make mmsearch_val_only
+make mmsearch_grpo_a100_debug
 ```
 
-`make hf_probe` checks Qwen model metadata access before the full download. `make reference_logprob_smoke` is the first non-toy reward-scoring step: it loads `Qwen/Qwen2.5-VL-3B-Instruct` as a frozen HF reference policy and computes DAG-IG rewards on a tiny batch.
+This is now the mainline. `make mmsearch_val_only` checks data, multi-turn rollout, search tool calls, and outcome reward without updating weights. `make mmsearch_grpo_a100_debug` runs the official GRPO training stack with small 3B/one-GPU defaults.
+
+Use SerpAPI only after this offline pipeline is stable:
+
+```bash
+export SERPAPI_API_KEY=...
+make mmsearch_val_only
+make mmsearch_grpo_a100_debug
+```
+
+If `SERPAPI_API_KEY` is unset, the scripts use `MMSEARCH_OFFLINE_PARQUET` over the FVQA train parquet. This is pipeline debugging, not the final paper setting.
+
+Previous DAG-IG prototype diagnostics remain available, but they are no longer the critical path:
 
 Next real-data diagnostic command:
 

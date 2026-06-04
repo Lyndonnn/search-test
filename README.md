@@ -136,6 +136,42 @@ trainer.val_generations_to_log_to_wandb=64 # num of val generations to log, this
 ```
 The model's responses will be saved in JSON format under `${path_to_save_dir}`, which can be used for subsequent analysis and evaluation.
 
+### Mainline Reproduction Path For This Fork
+
+The fastest useful path is to reproduce the MMSearch-R1 pipeline first, then replace the reward manager with DAG-IG. Do not treat the DAG-IG toy diagnostics as the paper baseline.
+
+1. Prepare FVQA in the veRL/MMSearch-R1 parquet format:
+```bash
+make mmsearch_prepare_fvqa_debug
+```
+
+2. Run validation-only multi-turn MMSearch-R1 search rollout on one A100/A800:
+```bash
+make mmsearch_val_only
+```
+This uses `Qwen/Qwen2.5-VL-3B-Instruct`, `vllm_multiturn_mmsearch`, `use_multi_turn_response_mask=True`, and saves generations under `results/mmsearch_r1/val_only_a100_debug`. If `SERPAPI_API_KEY` is not set, it automatically uses `MMSEARCH_OFFLINE_PARQUET` for offline FVQA retrieval.
+
+3. Run a small GRPO baseline through the same official training stack:
+```bash
+make mmsearch_grpo_a100_debug
+```
+This is the first training-loop target to compare against DAG-IG. The default is intentionally small: 3B, one GPU, `rollout.n=2`, `max_gen_round=2`, and `total_training_steps=20`.
+
+4. Scale to the original baseline only after the debug path is stable:
+```bash
+MMSEARCH_MODEL_PATH=Qwen/Qwen2.5-VL-7B-Instruct \
+N_GPUS=4 \
+TRAIN_BATCH_SIZE=8 \
+ROLLOUT_N=4 \
+MAX_GEN_ROUND=3 \
+TOTAL_TRAINING_STEPS=1000 \
+bash mmsearch_r1/scripts/run_mmsearch_r1_grpo_a100_debug.sh
+```
+
+For real web/image search, export `SERPAPI_API_KEY`. Without it, the scripts use offline FVQA retrieval only, which is useful for pipeline debugging but is not the final paper setting.
+
+The DAG-IG integration point is `mmsearch_r1/workers/multimodal/reward/mmsearch_r1.py`: MMSearch-R1 currently places an outcome reward on the final valid response token; DAG-IG should replace/augment this with action-span rewards from the multi-turn response mask and tool observations while keeping the same data, rollout, and GRPO training loop.
+
 ## ToDo
 - [x] Model and Datasets
 - [x] Inference script example

@@ -505,17 +505,12 @@ class RayPPOTrainer:
 
         generations_to_log = self.config.trainer.val_generations_to_log_to_wandb
 
-        if generations_to_log == 0:
-            return
+        should_save_val_only = self.config.trainer.get('val_only', False) and self.config.trainer.val_only_save_dir is not None
 
-        if generations_to_log > 0 and 'wandb' not in self.config.trainer.logger:
-            print(
-                'WARNING: `val_generations_to_log_to_wandb` is set to a positive value, but no wandb logger is found. '
-            )
+        if generations_to_log == 0 and not should_save_val_only:
             return
 
         import numpy as np
-        import wandb
 
         also_log_ground_truth_and_image_urls = len(reward_models) > 0 and len(image_urls) > 0
 
@@ -530,8 +525,10 @@ class RayPPOTrainer:
         rng = np.random.RandomState(42)
         rng.shuffle(samples)
 
-        # Take first N samples after shuffling
-        samples = samples[:generations_to_log]
+        # Take first N samples after shuffling. In val-only local-save mode,
+        # keep all validation samples unless an explicit positive cap is set.
+        if generations_to_log > 0:
+            samples = samples[:generations_to_log]
 
         # Initialize DataFrame columns
         if also_log_ground_truth_and_image_urls:
@@ -575,6 +572,16 @@ class RayPPOTrainer:
             )
             self.validation_table.to_json(save_path, orient="records", indent=2)
             print(f'validation generation saved to local: {save_path}')
+
+        if 'wandb' not in self.config.trainer.logger:
+            if generations_to_log > 0:
+                print(
+                    'WARNING: `val_generations_to_log_to_wandb` is positive, but no wandb logger is configured. '
+                    'Skipped wandb logging after local val-only save.'
+                )
+            return
+
+        import wandb
 
         # Update reference and log
         wandb.log({"val/generations": wandb.Table(dataframe=self.validation_table)}, step=self.global_steps)

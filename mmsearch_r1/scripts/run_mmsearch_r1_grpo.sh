@@ -1,6 +1,22 @@
-# This script is for single-node running test
+# This script is the main MMSearch-R1 GRPO entrypoint.
+# It keeps the original 7B/8-GPU defaults, but no longer assumes the
+# upstream repo directory is named `multimodal-search-r1`.
+set -euo pipefail
 
-cd multimodal-search-r1;
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT"
+export PYTHONPATH="$ROOT:${PYTHONPATH:-}"
+
+TRAIN_DATA_PATH="${TRAIN_DATA_PATH:-mmsearch_r1/data/fvqa_debug_train.pq}"
+VAL_DATA_PATH="${VAL_DATA_PATH:-mmsearch_r1/data/fvqa_debug_val.pq}"
+WANDB_PROJECT_NAME="${WANDB_PROJECT_NAME:-mmsearch_r1}"
+WANDB_EXP_NAME="${WANDB_EXP_NAME:-mmsearch_r1_grpo}"
+MODEL_PATH="${MMSEARCH_MODEL_PATH:-Qwen/Qwen2.5-VL-7B-Instruct}"
+N_GPUS="${N_GPUS:-8}"
+
+if [[ -z "${SERPAPI_API_KEY:-}" && -z "${MMSEARCH_OFFLINE_PARQUET:-}" && -f "$TRAIN_DATA_PATH" ]]; then
+    export MMSEARCH_OFFLINE_PARQUET="$TRAIN_DATA_PATH"
+fi
 
 python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
     algorithm.adv_estimator=grpo \
@@ -13,7 +29,7 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
     data.user_prompt_round_1=mmsearch_r1/prompts/round_1_user_prompt_qwenvl.pkl \
     data.user_prompt_after_image_search=mmsearch_r1/prompts/after_image_search_prompt_qwenvl.pkl \
     data.user_prompt_after_text_search=mmsearch_r1/prompts/after_text_search_prompt_qwenvl.pkl \
-    actor_rollout_ref.model.path=Qwen/Qwen2.5-VL-7B-Instruct \
+    actor_rollout_ref.model.path=$MODEL_PATH \
     actor_rollout_ref.actor.optim.lr=2e-6 \
     actor_rollout_ref.actor.optim.lr_sigmoid_decay_warmup=True \
     actor_rollout_ref.actor.optim.lr_sigmoid_decay_ratio=0.95 \
@@ -52,7 +68,7 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name=$WANDB_PROJECT_NAME \
     trainer.experiment_name=$WANDB_EXP_NAME \
-    trainer.n_gpus_per_node=8 \
+    trainer.n_gpus_per_node=$N_GPUS \
     trainer.nnodes=1 \
     trainer.save_freq=100 \
     trainer.test_freq=100 \
