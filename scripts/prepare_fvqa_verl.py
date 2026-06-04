@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import itertools
 import json
 import os
 from io import BytesIO
@@ -35,6 +36,14 @@ def parse_args() -> argparse.Namespace:
         "--print-sample",
         action="store_true",
         help="Print the first converted sample for inspection.",
+    )
+    parser.add_argument(
+        "--streaming",
+        action="store_true",
+        help=(
+            "Read FVQA with HuggingFace streaming and then apply offset/limit locally. "
+            "This avoids downloading the full FVQA parquet for small debug runs."
+        ),
     )
     return parser.parse_args()
 
@@ -263,8 +272,12 @@ def build_record(example: dict[str, Any], idx: int, split: str, data_source: str
 
 def main() -> None:
     args = parse_args()
-    hf_split = f"{args.split}[{args.offset}:{args.offset + args.limit}]"
-    dataset = load_dataset("lmms-lab/FVQA", split=hf_split)
+    if args.streaming:
+        dataset = load_dataset("lmms-lab/FVQA", split=args.split, streaming=True)
+        dataset = itertools.islice(dataset, args.offset, args.offset + args.limit)
+    else:
+        hf_split = f"{args.split}[{args.offset}:{args.offset + args.limit}]"
+        dataset = load_dataset("lmms-lab/FVQA", split=hf_split)
 
     records = [
         build_record(example, idx=args.offset + i, split=args.split, data_source=args.data_source, image_key=args.image_key)

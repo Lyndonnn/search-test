@@ -16,6 +16,7 @@ FVQA_TRAIN_LIMIT="${FVQA_TRAIN_LIMIT:-128}"
 FVQA_VAL_LIMIT="${FVQA_VAL_LIMIT:-128}"
 FVQA_TRAIN_OFFSET="${FVQA_TRAIN_OFFSET:-0}"
 FVQA_VAL_OFFSET="${FVQA_VAL_OFFSET:-0}"
+FVQA_STREAMING="${FVQA_STREAMING:-1}"
 TRAIN_OUT="${TRAIN_DATA_PATH:-mmsearch_r1/data/fvqa_debug_train.pq}"
 VAL_OUT="${VAL_DATA_PATH:-mmsearch_r1/data/fvqa_debug_val.pq}"
 
@@ -26,6 +27,10 @@ run_prepare() {
   local limit="$2"
   local offset="$3"
   local out="$4"
+  local streaming_args=()
+  if [[ "$FVQA_STREAMING" == "1" ]]; then
+    streaming_args+=(--streaming)
+  fi
 
   set +e
   python3 scripts/prepare_fvqa_verl.py \
@@ -33,7 +38,8 @@ run_prepare() {
     --limit "$limit" \
     --offset "$offset" \
     --out "$out" \
-    --print-sample
+    --print-sample \
+    "${streaming_args[@]}"
   local status=$?
   set -e
 
