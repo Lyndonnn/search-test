@@ -40,6 +40,7 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   data.user_prompt_after_image_search=mmsearch_r1/prompts/after_image_search_prompt_qwenvl.pkl \
   data.user_prompt_after_text_search=mmsearch_r1/prompts/after_text_search_prompt_qwenvl.pkl \
   actor_rollout_ref.model.path="$MODEL_PATH" \
+  actor_rollout_ref.model.attn_implementation="${ATTN_IMPLEMENTATION:-eager}" \
   actor_rollout_ref.actor.optim.lr="${ACTOR_LR:-5e-7}" \
   actor_rollout_ref.model.use_remove_padding=True \
   actor_rollout_ref.model.enable_gradient_checkpointing=True \
