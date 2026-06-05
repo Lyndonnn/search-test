@@ -16,6 +16,32 @@ INSTALL_FLASH_ATTN="${INSTALL_FLASH_ATTN:-0}"
 
 mkdir -p "$ROOT/third_party"
 
+venv_is_ready() {
+  [[ -x "$MMSEARCH_R1_VENV/bin/python" ]] \
+    && [[ -f "$MMSEARCH_R1_VENV/bin/activate" ]] \
+    && "$MMSEARCH_R1_VENV/bin/python" -m pip --version >/dev/null 2>&1
+}
+
+create_isolated_env() {
+  if venv_is_ready; then
+    return
+  fi
+
+  echo "Creating isolated MMSearch-R1 environment: $MMSEARCH_R1_VENV"
+  if python3 -m venv --clear "$MMSEARCH_R1_VENV" && venv_is_ready; then
+    return
+  fi
+
+  echo "stdlib venv failed or produced an incomplete environment; falling back to virtualenv."
+  python3 -m pip install -U virtualenv
+  python3 -m virtualenv --clear "$MMSEARCH_R1_VENV"
+
+  if ! venv_is_ready; then
+    echo "Failed to create a complete MMSearch-R1 environment: $MMSEARCH_R1_VENV" >&2
+    exit 1
+  fi
+}
+
 if [[ ! -d "$MMSEARCH_R1_VERL_ROOT/.git" ]]; then
   git clone --filter=blob:none --no-checkout https://github.com/volcengine/verl.git "$MMSEARCH_R1_VERL_ROOT"
 fi
@@ -23,9 +49,7 @@ fi
 git -C "$MMSEARCH_R1_VERL_ROOT" fetch --depth=1 origin "$MMSEARCH_R1_VERL_COMMIT"
 git -C "$MMSEARCH_R1_VERL_ROOT" checkout --detach "$MMSEARCH_R1_VERL_COMMIT"
 
-if [[ ! -x "$MMSEARCH_R1_VENV/bin/python" ]]; then
-  python3 -m venv "$MMSEARCH_R1_VENV"
-fi
+create_isolated_env
 
 # shellcheck disable=SC1091
 source "$MMSEARCH_R1_VENV/bin/activate"

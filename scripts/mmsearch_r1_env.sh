@@ -7,8 +7,10 @@ MMSEARCH_R1_VERL_COMMIT="8e9e73723fd1cc729bedb3bbcf915060afbda91d"
 MMSEARCH_R1_VERL_ROOT="${MMSEARCH_R1_VERL_ROOT:-$ROOT/third_party/mmsearch_r1_verl}"
 MMSEARCH_R1_VENV="${MMSEARCH_R1_VENV:-$ROOT/.venv-mmsearch-r1}"
 
-if [[ ! -x "$MMSEARCH_R1_VENV/bin/python" ]]; then
-  echo "Missing isolated MMSearch-R1 environment: $MMSEARCH_R1_VENV"
+if [[ ! -x "$MMSEARCH_R1_VENV/bin/python" ]] \
+  || [[ ! -f "$MMSEARCH_R1_VENV/bin/activate" ]] \
+  || ! "$MMSEARCH_R1_VENV/bin/python" -m pip --version >/dev/null 2>&1; then
+  echo "Missing or incomplete isolated MMSearch-R1 environment: $MMSEARCH_R1_VENV"
   echo "Run: make mmsearch_setup_baseline"
   exit 1
 fi
