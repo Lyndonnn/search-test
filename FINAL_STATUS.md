@@ -1,6 +1,6 @@
 # FINAL_STATUS
 
-Updated: 2026-06-04
+Updated: 2026-06-05
 
 ## Current Environment
 
@@ -110,20 +110,34 @@ Updated: 2026-06-04
 - The official GRPO script no longer assumes the repo directory is named `multimodal-search-r1`.
 - `val_only` now saves local validation generations even when using `trainer.logger=['console']`.
 - DAG-IG has not yet been inserted into the veRL/MMSearch-R1 reward manager. The next implementation target is `mmsearch_r1/workers/multimodal/reward/mmsearch_r1.py`.
+- MMSearch-R1 baseline environment is now isolated and locked:
+  - original veRL commit: `8e9e73723fd1cc729bedb3bbcf915060afbda91d`
+  - environment: `.venv-mmsearch-r1`
+  - lock file: `requirements-mmsearch-r1.txt`
+  - CUDA/BF16/NCCL/vLLM preflight: `make mmsearch_cuda_preflight`
+  - val-only no longer initializes the training-only reference policy
+- Do not install `./verl` for the MMSearch-R1 paper baseline. The repository's vendored `./verl` is a newer version and is reserved for non-baseline development.
 
 ## Next Most Important Command
 
 Mainline MMSearch-R1 baseline on A100/A800:
 
 ```bash
-pip install -r requirements.txt
-pip install -e ./verl
+make mmsearch_setup_baseline
+make mmsearch_cuda_preflight
+make mmsearch_check_overrides
 make mmsearch_prepare_fvqa_debug
 make mmsearch_val_only
 make mmsearch_grpo_a100_debug
 ```
 
-This is now the mainline. `make mmsearch_val_only` checks data, multi-turn rollout, search tool calls, and outcome reward without updating weights. `make mmsearch_grpo_a100_debug` runs the official GRPO training stack with small 3B/one-GPU defaults.
+This is now the mainline. The setup checks out the original MMSearch-R1 veRL
+commit `8e9e73723fd1cc729bedb3bbcf915060afbda91d` under `third_party/`, installs
+the locked stack in `.venv-mmsearch-r1`, and rejects mixed Colab/system
+environments before loading a model. `make mmsearch_val_only` checks data,
+multi-turn rollout, search tool calls, and outcome reward without initializing a
+training-only reference policy. `make mmsearch_grpo_a100_debug` retains the
+complete actor/reference-policy GRPO training path.
 
 Use SerpAPI only after this offline pipeline is stable:
 

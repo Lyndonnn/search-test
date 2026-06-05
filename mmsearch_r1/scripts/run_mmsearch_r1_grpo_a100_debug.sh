@@ -10,6 +10,17 @@ if [[ -f projects/dagig_mmsearch/scripts/autodl_env.sh ]]; then
   source projects/dagig_mmsearch/scripts/autodl_env.sh
 fi
 
+# shellcheck disable=SC1091
+source scripts/mmsearch_r1_env.sh
+
+if [[ "${MMSEARCH_SKIP_PREFLIGHT:-0}" != "1" ]]; then
+  python3 scripts/check_mmsearch_cuda_stack.py \
+    --require-nccl \
+    --require-vllm \
+    --require-exact-verl \
+    --require-locked-versions
+fi
+
 TRAIN_DATA_PATH="${TRAIN_DATA_PATH:-mmsearch_r1/data/fvqa_debug_train.pq}"
 VAL_DATA_PATH="${VAL_DATA_PATH:-mmsearch_r1/data/fvqa_debug_val.pq}"
 MODEL_PATH="${MMSEARCH_MODEL_PATH:-Qwen/Qwen2.5-VL-3B-Instruct}"

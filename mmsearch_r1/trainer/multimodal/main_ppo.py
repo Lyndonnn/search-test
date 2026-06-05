@@ -86,11 +86,13 @@ def main_task(config, compute_score=None):
 
     from mmsearch_r1.trainer.multimodal.ray_trainer import ResourcePoolManager, Role
 
+    val_only = bool(config.trainer.get('val_only', False))
     role_worker_mapping = {
         Role.ActorRollout: ray.remote(ActorRolloutRefWorker),
         Role.Critic: ray.remote(CriticWorker),
-        Role.RefPolicy: ray.remote(ActorRolloutRefWorker),
     }
+    if not val_only:
+        role_worker_mapping[Role.RefPolicy] = ray.remote(ActorRolloutRefWorker)
 
     global_pool_id = 'global_pool'
     resource_pool_spec = {
@@ -99,8 +101,9 @@ def main_task(config, compute_score=None):
     mapping = {
         Role.ActorRollout: global_pool_id,
         Role.Critic: global_pool_id,
-        Role.RefPolicy: global_pool_id,
     }
+    if not val_only:
+        mapping[Role.RefPolicy] = global_pool_id
 
     # we should adopt a multi-source reward function here
     # - for rule-based rm, we directly call a reward score

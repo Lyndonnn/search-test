@@ -30,19 +30,25 @@ Quickstart (Colab or local):
 ```bash
 git clone https://github.com/Lyndonnn/search-test.git
 cd search-test
-pip install -r requirements.txt
-pip install -e ./verl
+make mmsearch_setup_baseline
+make mmsearch_cuda_preflight
 bash scripts/run_m0_sanity.sh
 ```
 
-For Google Colab, the most reliable path is to use an isolated virtualenv instead of Colab's preinstalled Python packages:
+The baseline setup deliberately does not install `./verl`. The original
+MMSearch-R1 repository pins veRL commit
+`8e9e73723fd1cc729bedb3bbcf915060afbda91d`; this fork checks that commit out
+under `third_party/mmsearch_r1_verl/` and installs a locked compatibility stack
+inside `.venv-mmsearch-r1`.
+
+For Google Colab:
 ```bash
-# if you are already inside the cloned repo:
-bash scripts/bootstrap_colab.sh
-source .venv-colab/bin/activate
-python -c "import numpy, pandas, pyarrow; print(numpy.__version__, pandas.__version__, pyarrow.__version__)"
+PREPARE_FVQA_DEBUG=1 FVQA_TRAIN_LIMIT=16 FVQA_TEST_LIMIT=8 \
+  bash scripts/bootstrap_colab.sh
 ```
-This avoids dependency warnings from preinstalled packages such as `jax`, `opencv`, or `shap`. The recommended combination in this repo is `numpy==1.26.4`, `pandas==2.2.2`, `pyarrow==19.0.1`.
+This installs the isolated environment, checks CUDA/BF16/NCCL/vLLM, and prepares
+streamed FVQA debug parquets. `INSTALL_FLASH_ATTN=1` is optional after the
+locked eager-attention baseline is stable.
 
 If you want a one-shot Colab setup for the current research stage, use:
 ```bash
@@ -54,31 +60,17 @@ drive.mount('/content/drive')
 !rm -rf search-test
 !git clone https://github.com/Lyndonnn/search-test.git
 %cd search-test
-!PREPARE_FVQA_DEBUG=1 bash scripts/bootstrap_colab.sh
+!PREPARE_FVQA_DEBUG=1 FVQA_TRAIN_LIMIT=16 FVQA_TEST_LIMIT=8 bash scripts/bootstrap_colab.sh
 ```
-This creates `.venv-colab`, installs `flash-attn` inside the venv, pins the data stack, installs `./verl`, and prepares `mmsearch_r1/data/fvqa_debug_train.pq` plus `mmsearch_r1/data/fvqa_debug_val.pq`.
+This creates `.venv-mmsearch-r1`, installs the original pinned veRL checkout,
+and prepares `mmsearch_r1/data/fvqa_debug_train.pq` plus
+`mmsearch_r1/data/fvqa_debug_val.pq`.
 
 The repository includes `mmsearch_r1/data/mini_data.pq` for sanity/debug runs.
 Larger parquet datasets are expected to be prepared locally in veRL format and are not
 bundled with this repo.
 
-```bash
-# Clone this repo with submodules
-git clone --recurse-submodules https://github.com/EvolvingLMMs-Lab/multimodal-search-r1.git
-cd multimodal-search-r1
-# Init Conda Env
-conda create -n mmsearch_r1 python==3.10 -y
-conda activate mmsearch_r1
-# Install Dependencies
-pip3 install -e ./verl
-pip3 install vllm==0.8.2
-pip3 install transformers==4.51.0
-pip3 install flash-attn==2.7.4.post1
-# Init wandb
-pip3 install wandb
-export WANDB_API_KEY="XXX"
-wandb login $WANDB_API_KEY
-```
+Locked baseline versions are recorded in `requirements-mmsearch-r1.txt`.
 
 ## Multimodal Search Tool Implemention
 We draw inspiration from open-sourced implementation [OpenDeepResearcher](https://github.com/mshumer/OpenDeepResearcher/blob/main/open_deep_researcher.ipynb), which integrates [SerpApi](https://serpapi.com/), [JINA Reader](https://jina.ai/reader/), and LLM-based summarization to retrieve and condense web content relevant to a given question. Currently, MMSearch-R1 includes two types of search tools: an image search tool and a text search tool.
@@ -95,15 +87,14 @@ Important:
 - larger parquet files should be generated or downloaded locally
 - this repo intentionally does not ship the previous 2k parquet pointer because it broke fresh clones
 
-Prepare a small FVQA debug/val parquet first:
+Prepare a small streamed FVQA debug/val parquet first:
 ```bash
-python3 scripts/prepare_fvqa_verl.py --split train --limit 100 --out mmsearch_r1/data/fvqa_debug_train.pq
-python3 scripts/prepare_fvqa_verl.py --split test --limit 100 --out mmsearch_r1/data/fvqa_debug_val.pq
+FVQA_TRAIN_LIMIT=16 FVQA_VAL_LIMIT=8 make mmsearch_prepare_fvqa_debug
 ```
 
 If you are using Colab with the isolated virtualenv, avoid importing `pandas` in the notebook kernel directly. Instead, run helper scripts through the virtualenv:
 ```bash
-source .venv-colab/bin/activate && python scripts/export_verl_sample.py --parquet mmsearch_r1/data/fvqa_debug_val.pq --index 0 --output-dir outputs/fvqa_demo
+source .venv-mmsearch-r1/bin/activate && python scripts/export_verl_sample.py --parquet mmsearch_r1/data/fvqa_debug_val.pq --index 0 --output-dir outputs/fvqa_demo
 ```
 
 The generated parquet follows the veRL-style object columns used by MMSearch-R1:
@@ -140,24 +131,31 @@ The model's responses will be saved in JSON format under `${path_to_save_dir}`, 
 
 The fastest useful path is to reproduce the MMSearch-R1 pipeline first, then replace the reward manager with DAG-IG. Do not treat the DAG-IG toy diagnostics as the paper baseline.
 
-1. Prepare FVQA in the veRL/MMSearch-R1 parquet format:
+1. Install and verify the original locked baseline environment:
+```bash
+make mmsearch_setup_baseline
+make mmsearch_cuda_preflight
+make mmsearch_check_overrides
+```
+
+2. Prepare FVQA in the veRL/MMSearch-R1 parquet format:
 ```bash
 make mmsearch_prepare_fvqa_debug
 ```
 
-2. Run validation-only multi-turn MMSearch-R1 search rollout on one A100/A800:
+3. Run validation-only multi-turn MMSearch-R1 search rollout on one A100/A800:
 ```bash
 make mmsearch_val_only
 ```
 This uses `Qwen/Qwen2.5-VL-3B-Instruct`, `vllm_multiturn_mmsearch`, `use_multi_turn_response_mask=True`, and saves generations under `results/mmsearch_r1/val_only_a100_debug`. If `SERPAPI_API_KEY` is not set, it automatically uses `MMSEARCH_OFFLINE_PARQUET` for offline FVQA retrieval.
 
-3. Run a small GRPO baseline through the same official training stack:
+4. Run a small GRPO baseline through the same official training stack:
 ```bash
 make mmsearch_grpo_a100_debug
 ```
 This is the first training-loop target to compare against DAG-IG. The default is intentionally small: 3B, one GPU, `rollout.n=2`, `max_gen_round=2`, and `total_training_steps=20`.
 
-4. Scale to the original baseline only after the debug path is stable:
+5. Scale to the original baseline only after the debug path is stable:
 ```bash
 MMSEARCH_MODEL_PATH=Qwen/Qwen2.5-VL-7B-Instruct \
 N_GPUS=4 \

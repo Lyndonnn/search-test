@@ -1,0 +1,32 @@
+# Locked compatibility stack for the original MMSearch-R1 veRL commit.
+# Install this before the exact veRL checkout with:
+#   pip install -r requirements-mmsearch-r1.txt
+#   pip install --no-deps -e third_party/mmsearch_r1_verl
+
+accelerate
+codetiming
+datasets
+dill
+hydra-core>=1.3.2
+numpy==1.26.4
+pandas==2.2.2
+peft
+pyarrow==19.0.1
+pybind11
+pylatexenc
+ray[default]==2.44.1
+tensordict==0.6.2
+torch==2.6.0
+torchdata
+torchvision==0.21.0
+transformers==4.51.0
+vllm==0.8.2
+wandb
+packaging>=20.0
+pillow
+requests
+qwen_vl_utils
+sentencepiece
+safetensors
+huggingface_hub>=0.24.0
+PyYAML>=6.0.1

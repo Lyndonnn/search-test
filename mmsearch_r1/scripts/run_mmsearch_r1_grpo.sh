@@ -7,6 +7,17 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 export PYTHONPATH="$ROOT:${PYTHONPATH:-}"
 
+# shellcheck disable=SC1091
+source scripts/mmsearch_r1_env.sh
+
+if [[ "${MMSEARCH_SKIP_PREFLIGHT:-0}" != "1" ]]; then
+    python3 scripts/check_mmsearch_cuda_stack.py \
+        --require-nccl \
+        --require-vllm \
+        --require-exact-verl \
+        --require-locked-versions
+fi
+
 TRAIN_DATA_PATH="${TRAIN_DATA_PATH:-mmsearch_r1/data/fvqa_debug_train.pq}"
 VAL_DATA_PATH="${VAL_DATA_PATH:-mmsearch_r1/data/fvqa_debug_val.pq}"
 WANDB_PROJECT_NAME="${WANDB_PROJECT_NAME:-mmsearch_r1}"

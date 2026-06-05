@@ -14,4 +14,4 @@ if [ -d /root/autodl-tmp ]; then
 fi
 
 echo "DAG-IG setup directories created under $ROOT"
-echo "Install dependencies manually when needed: pip install -r requirements.txt && pip install -e ./verl"
+echo "For MMSearch-R1 baseline training, run: make mmsearch_setup_baseline"

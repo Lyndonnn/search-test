@@ -93,6 +93,7 @@ celerybeat-schedule
 # virtualenv
 venv/
 ENV/
+.venv-mmsearch-r1/
 
 # Spyder project settings
 .spyderproject
@@ -125,3 +126,6 @@ mmsearch_r1/data/*.parquet
 data/cache/
 data/indexes/*nonleaky*.jsonl
 logs/*.tmp
+
+# Exact upstream veRL checkout used by the MMSearch-R1 baseline.
+third_party/mmsearch_r1_verl/

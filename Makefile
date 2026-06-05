@@ -3,7 +3,7 @@ DAGIG_ROOT := projects/dagig_mmsearch
 DAGIG_SRC := $(DAGIG_ROOT)/src
 export PYTHONPATH := $(DAGIG_SRC):$(PYTHONPATH)
 
-.PHONY: setup audit prepare_data prepare_real_data prepare_nonleaky_corpus build_indexes smoke autodl_check hf_probe reference_logprob_smoke reference_ablation agent_rollout_smoke model_agent_rollout model_agent_two_turn model_agent_two_turn_nonleaky mmsearch_m0 mmsearch_check_overrides mmsearch_prepare_fvqa_debug mmsearch_val_only mmsearch_grpo_a100_debug eval_nosearch eval_prompted train_outcome train_local_ig train_dagig_lite eval_all make_tables make_figures
+.PHONY: setup audit prepare_data prepare_real_data prepare_nonleaky_corpus build_indexes smoke autodl_check hf_probe reference_logprob_smoke reference_ablation agent_rollout_smoke model_agent_rollout model_agent_two_turn model_agent_two_turn_nonleaky mmsearch_m0 mmsearch_setup_baseline mmsearch_cuda_preflight mmsearch_check_overrides mmsearch_prepare_fvqa_debug mmsearch_val_only mmsearch_grpo_a100_debug eval_nosearch eval_prompted train_outcome train_local_ig train_dagig_lite eval_all make_tables make_figures
 
 setup:
 	bash $(DAGIG_ROOT)/scripts/setup_autodl_a800.sh
@@ -29,6 +29,12 @@ smoke:
 
 mmsearch_m0:
 	bash scripts/run_m0_sanity.sh
+
+mmsearch_setup_baseline:
+	bash scripts/setup_mmsearch_r1_baseline_env.sh
+
+mmsearch_cuda_preflight:
+	bash -c 'ROOT="$$(pwd)"; source scripts/mmsearch_r1_env.sh; python3 scripts/check_mmsearch_cuda_stack.py --require-nccl --require-vllm --require-exact-verl --require-locked-versions'
 
 mmsearch_check_overrides:
 	$(PYTHON) scripts/check_mmsearch_hydra_overrides.py
