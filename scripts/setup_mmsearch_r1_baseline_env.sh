@@ -50,6 +50,7 @@ python scripts/check_mmsearch_cuda_stack.py \
   --require-locked-versions
 
 echo "MMSearch-R1 baseline environment is ready."
-echo "Restart the Colab runtime after package replacement, then run:"
+echo "The MMSearch-R1 commands activate the isolated environment automatically."
+echo "Next run:"
 echo "  make mmsearch_cuda_preflight"
 echo "  make mmsearch_val_only"
