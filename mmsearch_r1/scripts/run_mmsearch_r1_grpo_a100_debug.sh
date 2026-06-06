@@ -10,7 +10,12 @@ if [[ -f projects/dagig_mmsearch/scripts/autodl_env.sh ]]; then
   source projects/dagig_mmsearch/scripts/autodl_env.sh
 fi
 
-export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+if [[ "${DAGIG_ENABLE_EXPANDABLE_SEGMENTS:-False}" == "True" ]]; then
+  export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+elif [[ "${DAGIG_KEEP_CUDA_ALLOC_CONF:-0}" != "1" && "${PYTORCH_CUDA_ALLOC_CONF:-}" == *"expandable_segments"* ]]; then
+  echo "Unsetting PYTORCH_CUDA_ALLOC_CONF=$PYTORCH_CUDA_ALLOC_CONF because vLLM V1 memory pool is incompatible with expandable_segments."
+  unset PYTORCH_CUDA_ALLOC_CONF
+fi
 
 # shellcheck disable=SC1091
 source scripts/mmsearch_r1_env.sh
