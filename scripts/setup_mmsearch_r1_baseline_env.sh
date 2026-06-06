@@ -48,7 +48,7 @@ fi
 
 git -C "$MMSEARCH_R1_VERL_ROOT" fetch --depth=1 origin "$MMSEARCH_R1_VERL_COMMIT"
 git -C "$MMSEARCH_R1_VERL_ROOT" checkout --detach "$MMSEARCH_R1_VERL_COMMIT"
-python3 scripts/patch_mmsearch_r1_verl_flash_attn.py --verl-root "$MMSEARCH_R1_VERL_ROOT"
+python3 scripts/patch_mmsearch_r1_verl_flash_attn.py --reset-first --verl-root "$MMSEARCH_R1_VERL_ROOT"
 
 create_isolated_env
 

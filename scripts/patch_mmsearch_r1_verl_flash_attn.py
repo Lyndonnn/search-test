@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 from pathlib import Path
 
 
@@ -69,12 +70,29 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("MMSEARCH_R1_VERL_ROOT", "third_party/mmsearch_r1_verl"),
         help="Path to the pinned MMSearch-R1 veRL checkout.",
     )
+    parser.add_argument(
+        "--reset-first",
+        action="store_true",
+        help="Restore the target file from the pinned veRL checkout before patching.",
+    )
     return parser.parse_args()
+
+
+def reset_target(verl_root: Path) -> None:
+    if not (verl_root / ".git").is_dir():
+        return
+    subprocess.run(
+        ["git", "-C", str(verl_root), "checkout", "--", "verl/workers/actor/dp_actor.py"],
+        check=True,
+    )
 
 
 def main() -> None:
     args = parse_args()
-    target = Path(args.verl_root) / "verl" / "workers" / "actor" / "dp_actor.py"
+    verl_root = Path(args.verl_root)
+    if args.reset_first:
+        reset_target(verl_root)
+    target = verl_root / "verl" / "workers" / "actor" / "dp_actor.py"
     if not target.is_file():
         raise FileNotFoundError(f"Missing veRL actor file: {target}")
     changed = patch_file(target)
