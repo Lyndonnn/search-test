@@ -12,6 +12,7 @@ fi
 
 # shellcheck disable=SC1091
 source scripts/mmsearch_r1_env.sh
+python3 scripts/patch_mmsearch_r1_verl_flash_attn.py --verl-root "$MMSEARCH_R1_VERL_ROOT"
 
 if [[ "${MMSEARCH_SKIP_PREFLIGHT:-0}" != "1" ]]; then
   python3 scripts/check_mmsearch_cuda_stack.py \
