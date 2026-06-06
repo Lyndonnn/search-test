@@ -12,7 +12,11 @@ fi
 
 # shellcheck disable=SC1091
 source scripts/mmsearch_r1_env.sh
-python3 scripts/patch_mmsearch_r1_verl_flash_attn.py --reset-first --verl-root "$MMSEARCH_R1_VERL_ROOT"
+if [[ "${USE_REMOVE_PADDING:-False}" == "True" || "${ATTN_IMPLEMENTATION:-eager}" == "flash_attention_2" ]]; then
+  python3 scripts/patch_mmsearch_r1_verl_flash_attn.py --reset-only --verl-root "$MMSEARCH_R1_VERL_ROOT"
+else
+  python3 scripts/patch_mmsearch_r1_verl_flash_attn.py --reset-first --verl-root "$MMSEARCH_R1_VERL_ROOT"
+fi
 
 if [[ "${MMSEARCH_SKIP_PREFLIGHT:-0}" != "1" ]]; then
   python3 scripts/check_mmsearch_cuda_stack.py \

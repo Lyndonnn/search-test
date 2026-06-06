@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.patch_mmsearch_r1_verl_flash_attn import patch_text
+from scripts.patch_mmsearch_r1_verl_flash_attn import parse_args, patch_text
 
 
 class MMSearchVerlPatchTest(unittest.TestCase):
@@ -47,6 +47,11 @@ class Actor:
         patched, changed = patch_text(source)
         self.assertFalse(changed)
         self.assertEqual(patched, source)
+
+    def test_reset_only_arg(self):
+        args = parse_args(["--reset-only", "--verl-root", "/tmp/verl"])
+        self.assertTrue(args.reset_only)
+        self.assertEqual(args.verl_root, "/tmp/verl")
 
 
 if __name__ == "__main__":

@@ -63,7 +63,7 @@ def patch_file(path: Path) -> bool:
     return changed
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--verl-root",
@@ -75,7 +75,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Restore the target file from the pinned veRL checkout before patching.",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--reset-only",
+        action="store_true",
+        help="Restore the target file from the pinned veRL checkout and do not patch.",
+    )
+    return parser.parse_args(argv)
 
 
 def reset_target(verl_root: Path) -> None:
@@ -90,11 +95,14 @@ def reset_target(verl_root: Path) -> None:
 def main() -> None:
     args = parse_args()
     verl_root = Path(args.verl_root)
-    if args.reset_first:
+    if args.reset_first or args.reset_only:
         reset_target(verl_root)
     target = verl_root / "verl" / "workers" / "actor" / "dp_actor.py"
     if not target.is_file():
         raise FileNotFoundError(f"Missing veRL actor file: {target}")
+    if args.reset_only:
+        print(f"MMSearch-R1 veRL flash-attn fallback: reset original {target}")
+        return
     changed = patch_file(target)
     status = "patched" if changed else "already patched"
     print(f"MMSearch-R1 veRL flash-attn fallback: {status} {target}")
