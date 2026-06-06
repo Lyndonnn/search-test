@@ -231,7 +231,9 @@ def normalize_reward_model_field(value: Any, ground_truth: str, candidate_answer
     out = {
         "style": style,
         "ground_truth": ground_truth,
-        "candidate_answers": candidate_answers,
+        # Keep the original MMSearch-R1 schema: candidate_answers is a JSON
+        # string, not a nested Arrow list that can reload as numpy.ndarray.
+        "candidate_answers": json.dumps(candidate_answers, ensure_ascii=False),
     }
     return out
 

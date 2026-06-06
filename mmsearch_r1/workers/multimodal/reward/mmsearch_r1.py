@@ -1,8 +1,7 @@
-import json
-
 import torch
 from verl import DataProto
 
+from mmsearch_r1.workers.multimodal.reward.answer_utils import normalize_answer_list
 from mmsearch_r1.utils.reward_score_mm import _default_compute_score
 
 
@@ -75,16 +74,10 @@ class MMSearchR1_RewardManager:
 
             # We need `ground_truth` to be a list to support multiple candidate answers
             ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
-            if isinstance(ground_truth, str):
-                ground_truth = [ground_truth]
+            ground_truth = normalize_answer_list(ground_truth)
             if 'candidate_answers' in data_item.non_tensor_batch['reward_model']:
                 candidate_answers = data_item.non_tensor_batch['reward_model']['candidate_answers']
-                if isinstance(candidate_answers, list):
-                    ground_truth += candidate_answers
-                elif isinstance(candidate_answers, str):
-                    ground_truth += json.loads(candidate_answers)
-                else:
-                    raise TypeError(f"candidate_answers must be a list or a string, but got {type(candidate_answers)}")
+                ground_truth += normalize_answer_list(candidate_answers)
             ground_truth = [g for g in ground_truth if isinstance(g, str)]
             data_source = data_item.non_tensor_batch['data_source']
 
