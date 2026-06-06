@@ -320,6 +320,7 @@ def format_image_results(results: list[tuple[OfflineDoc, float]]) -> tuple[str, 
         title = f"Likely answer: {doc.answer}; Related question: {doc.question}"
         titles.append(title)
         lines.append(f"{rank}. question_id: {doc.question_id}")
+        lines.append("   image: <|vision_start|><|image_pad|><|vision_end|>")
         lines.append(f"   similarity: {score:.4f}")
         lines.append(f"   related_question: {doc.question}")
         lines.append(f"   likely_answer: {doc.answer}")
