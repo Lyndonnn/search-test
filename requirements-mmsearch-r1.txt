@@ -23,6 +23,7 @@ transformers==4.51.0
 vllm==0.8.2
 wandb
 packaging>=20.0
+setuptools<81
 pillow
 requests
 qwen_vl_utils

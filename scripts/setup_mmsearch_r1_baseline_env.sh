@@ -55,6 +55,9 @@ create_isolated_env
 source "$MMSEARCH_R1_VENV/bin/activate"
 python -m pip install -U pip setuptools wheel packaging ninja
 python -m pip install --upgrade --force-reinstall -r requirements-mmsearch-r1.txt
+# The original MMSearch-R1 veRL commit imports pkg_resources from setuptools.
+# Reinstall after the locked stack in case Colab/pip resolution removes it.
+python -m pip install -U "setuptools<81" wheel packaging ninja
 python -m pip uninstall -y verl || true
 python -m pip install --no-deps -e "$MMSEARCH_R1_VERL_ROOT"
 

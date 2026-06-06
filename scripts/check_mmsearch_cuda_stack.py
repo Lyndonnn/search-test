@@ -50,6 +50,14 @@ def run_nvidia_smi() -> None:
 
 
 def check_exact_verl() -> None:
+    try:
+        import pkg_resources  # noqa: F401
+    except Exception as exc:
+        raise RuntimeError(
+            "Missing pkg_resources. Install setuptools in the isolated "
+            "MMSearch-R1 environment: python -m pip install 'setuptools<81'"
+        ) from exc
+
     import verl
 
     expected_root = Path(os.environ["MMSEARCH_R1_VERL_ROOT"]).resolve()
