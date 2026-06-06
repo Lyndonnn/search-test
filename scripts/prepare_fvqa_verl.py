@@ -3,6 +3,7 @@ import argparse
 import itertools
 import json
 import os
+import re
 from io import BytesIO
 from typing import Any
 
@@ -44,6 +45,11 @@ def parse_args() -> argparse.Namespace:
             "Read FVQA with HuggingFace streaming and then apply offset/limit locally. "
             "This avoids downloading the full FVQA parquet for small debug runs."
         ),
+    )
+    parser.add_argument(
+        "--image-dir",
+        default="",
+        help="Optional directory to export images and write their local paths into image_urls.",
     )
     return parser.parse_args()
 
@@ -191,6 +197,19 @@ def choose_id(example: dict[str, Any], fallback: int) -> str:
     return str(fallback)
 
 
+def safe_filename(text: str) -> str:
+    normalized = re.sub(r"[^A-Za-z0-9_.-]+", "_", text).strip("._")
+    return normalized or "sample"
+
+
+def export_search_image(image_bytes: bytes, image_dir: str, split: str, qid: str) -> str:
+    os.makedirs(image_dir, exist_ok=True)
+    path = os.path.join(image_dir, f"{safe_filename(split)}_{safe_filename(qid)}.png")
+    image = Image.open(BytesIO(image_bytes)).convert("RGB")
+    image.save(path)
+    return path
+
+
 def normalize_prompt(prompt: Any) -> list[dict[str, str]]:
     if isinstance(prompt, list):
         normalized = []
@@ -238,7 +257,14 @@ def normalize_reward_model_field(value: Any, ground_truth: str, candidate_answer
     return out
 
 
-def build_record(example: dict[str, Any], idx: int, split: str, data_source: str, image_key: str) -> dict[str, Any]:
+def build_record(
+    example: dict[str, Any],
+    idx: int,
+    split: str,
+    data_source: str,
+    image_key: str,
+    image_dir: str = "",
+) -> dict[str, Any]:
     ground_truth, candidate_answers = choose_answers(example)
     qid = choose_id(example, idx)
 
@@ -253,13 +279,16 @@ def build_record(example: dict[str, Any], idx: int, split: str, data_source: str
         images = [{"bytes": choose_image(example)}]
 
     record_data_source = normalize_text(example.get("data_source")) or data_source
+    image_url = choose_image_url(example)
+    if not image_url and image_dir:
+        image_url = export_search_image(images[0]["bytes"], image_dir=image_dir, split=split, qid=qid)
 
     record = {
         "prompt": prompt,
         image_key: images,
         "reward_model": normalize_reward_model_field(example.get("reward_model"), ground_truth, candidate_answers),
         "data_source": record_data_source,
-        "image_urls": choose_image_url(example),
+        "image_urls": image_url,
         "extra_info": {
             "index": idx,
             "question_id": qid,
@@ -282,7 +311,14 @@ def main() -> None:
         dataset = load_dataset("lmms-lab/FVQA", split=hf_split)
 
     records = [
-        build_record(example, idx=args.offset + i, split=args.split, data_source=args.data_source, image_key=args.image_key)
+        build_record(
+            example,
+            idx=args.offset + i,
+            split=args.split,
+            data_source=args.data_source,
+            image_key=args.image_key,
+            image_dir=args.image_dir,
+        )
         for i, example in enumerate(dataset)
     ]
 

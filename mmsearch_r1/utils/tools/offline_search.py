@@ -6,7 +6,6 @@ from io import BytesIO
 from typing import Any, Optional
 
 import pandas as pd
-import requests
 from PIL import Image
 
 
@@ -82,9 +81,13 @@ def _tokenize(text: str) -> list[str]:
 
 
 def _load_image_from_source(image_source: str) -> Image.Image:
+    if not image_source or not str(image_source).strip():
+        raise ValueError("image_source is empty; provide an image URL or local image path.")
     if image_source.startswith("file://"):
         image_source = image_source[7:]
     if image_source.startswith("http://") or image_source.startswith("https://"):
+        import requests
+
         headers = dict(DEFAULT_HTTP_HEADERS)
         headers["Referer"] = image_source
         response = requests.get(image_source, timeout=20, headers=headers)

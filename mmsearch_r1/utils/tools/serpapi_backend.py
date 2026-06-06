@@ -2,7 +2,6 @@ import os
 from io import BytesIO
 from typing import Any, Optional
 
-import requests
 from PIL import Image
 
 
@@ -26,6 +25,8 @@ def has_serpapi() -> bool:
 
 
 def _request_serpapi(params: dict[str, Any]) -> dict[str, Any]:
+    import requests
+
     api_key = get_serpapi_key()
     if not api_key:
         raise RuntimeError("SERPAPI_API_KEY is not set")
@@ -41,6 +42,8 @@ def _request_serpapi(params: dict[str, Any]) -> dict[str, Any]:
 
 
 def _download_image(url: str) -> Optional[Image.Image]:
+    import requests
+
     if not url:
         return None
     try:

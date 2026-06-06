@@ -5,7 +5,24 @@ from mmsearch_r1.utils.tools.offline_search import format_image_results, get_off
 from mmsearch_r1.utils.tools.serpapi_backend import has_serpapi, search_google_lens
 
 
+def _missing_image_source_response():
+    return (
+        "[Image Search Results] Image search was skipped because no image URL or local image path was provided.",
+        [],
+        {
+            "success": False,
+            "num_images": 0,
+            "backend": "missing_image_source",
+            "titles": [],
+            "error": "empty image_url",
+        },
+    )
+
+
 def call_image_search(image_url: str):
+    if not image_url or not str(image_url).strip():
+        return _missing_image_source_response()
+
     if has_serpapi():
         try:
             return search_google_lens(image_url, num_results=3)

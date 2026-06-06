@@ -19,8 +19,9 @@ FVQA_VAL_OFFSET="${FVQA_VAL_OFFSET:-0}"
 FVQA_STREAMING="${FVQA_STREAMING:-1}"
 TRAIN_OUT="${TRAIN_DATA_PATH:-mmsearch_r1/data/fvqa_debug_train.pq}"
 VAL_OUT="${VAL_DATA_PATH:-mmsearch_r1/data/fvqa_debug_val.pq}"
+FVQA_IMAGE_DIR="${FVQA_IMAGE_DIR:-mmsearch_r1/data/fvqa_debug_images}"
 
-mkdir -p mmsearch_r1/data
+mkdir -p mmsearch_r1/data "$FVQA_IMAGE_DIR"
 
 run_prepare() {
   local split="$1"
@@ -38,6 +39,7 @@ run_prepare() {
     --limit "$limit" \
     --offset "$offset" \
     --out "$out" \
+    --image-dir "$FVQA_IMAGE_DIR" \
     --print-sample \
     "${streaming_args[@]}"
   local status=$?
@@ -58,6 +60,7 @@ run_prepare "$FVQA_VAL_SPLIT" "$FVQA_VAL_LIMIT" "$FVQA_VAL_OFFSET" "$VAL_OUT"
 echo "Prepared MMSearch-R1 FVQA debug data:"
 echo "  train: $TRAIN_OUT"
 echo "  val:   $VAL_OUT"
+echo "  images: $FVQA_IMAGE_DIR"
 echo
 echo "Next baseline checks:"
 echo "  make mmsearch_val_only"
