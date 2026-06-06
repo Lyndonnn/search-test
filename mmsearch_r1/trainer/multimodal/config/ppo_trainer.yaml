@@ -60,6 +60,7 @@ actor_rollout_ref:
       lr_sigmoid_decay_warmup: False # whether use sigmoid lr decay or not [for MMSearch-R1]
       lr_sigmoid_decay_ratio: 0 # how much to decay is sigmoid lr decay is used (0 for no decay)
       lr_sigmoid_decay_warmup_steps: 60 # roughly how many steps to keep high lr
+      foreach: null # set False for small single-GPU debug runs to reduce AdamW temporary memory
     fsdp_config:
       wrap_policy:
         # transformer_layer_cls_to_wrap: None

@@ -10,6 +10,8 @@ if [[ -f projects/dagig_mmsearch/scripts/autodl_env.sh ]]; then
   source projects/dagig_mmsearch/scripts/autodl_env.sh
 fi
 
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+
 # shellcheck disable=SC1091
 source scripts/mmsearch_r1_env.sh
 if [[ "${USE_REMOVE_PADDING:-False}" == "True" || "${ATTN_IMPLEMENTATION:-eager}" == "flash_attention_2" ]]; then
@@ -60,6 +62,7 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   actor_rollout_ref.model.disable_monkey_patch="${DISABLE_MONKEY_PATCH:-True}" \
   actor_rollout_ref.actor.optim.lr="${ACTOR_LR:-1e-6}" \
   actor_rollout_ref.actor.optim.lr_sigmoid_decay_warmup=False \
+  actor_rollout_ref.actor.optim.foreach="${ADAMW_FOREACH:-False}" \
   actor_rollout_ref.model.use_remove_padding="${USE_REMOVE_PADDING:-False}" \
   actor_rollout_ref.model.enable_gradient_checkpointing=True \
   actor_rollout_ref.actor.ppo_mini_batch_size="$PPO_MINI_BATCH_SIZE" \
@@ -73,7 +76,7 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
   actor_rollout_ref.rollout.name=vllm_multiturn_mmsearch \
   actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
-  actor_rollout_ref.rollout.gpu_memory_utilization="${VLLM_GPU_MEMORY_UTILIZATION:-0.45}" \
+  actor_rollout_ref.rollout.gpu_memory_utilization="${VLLM_GPU_MEMORY_UTILIZATION:-0.30}" \
   actor_rollout_ref.rollout.enable_chunked_prefill=False \
   actor_rollout_ref.rollout.enforce_eager="${VLLM_ENFORCE_EAGER:-True}" \
   actor_rollout_ref.rollout.free_cache_engine=False \
