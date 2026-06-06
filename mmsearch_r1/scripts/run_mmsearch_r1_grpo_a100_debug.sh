@@ -32,7 +32,7 @@ MODEL_PATH="${MMSEARCH_MODEL_PATH:-Qwen/Qwen2.5-VL-3B-Instruct}"
 N_GPUS="${N_GPUS:-1}"
 TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-1}"
 ROLLOUT_N="${ROLLOUT_N:-2}"
-PPO_MINI_BATCH_SIZE="${PPO_MINI_BATCH_SIZE:-$((TRAIN_BATCH_SIZE * ROLLOUT_N))}"
+PPO_MINI_BATCH_SIZE="${PPO_MINI_BATCH_SIZE:-1}"
 
 if [[ ! -f "$TRAIN_DATA_PATH" || ! -f "$VAL_DATA_PATH" ]]; then
   echo "Missing FVQA parquet. Run: make mmsearch_prepare_fvqa_debug"

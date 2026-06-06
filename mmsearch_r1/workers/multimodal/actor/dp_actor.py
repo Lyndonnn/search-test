@@ -254,6 +254,9 @@ class MmDataParallelPPOActor(DataParallelPPOActor):
             select_keys.append('ref_log_prob')
         batch = data.select(batch_keys=select_keys).batch
         has_multi_modal_inputs = 'multi_modal_data' in data.non_tensor_batch.keys()
+        actual_batch_size = data.batch.batch_size[0]
+        effective_mini_batch_size = min(self.config.ppo_mini_batch_size, actual_batch_size)
+        effective_mini_batch_size = max(1, effective_mini_batch_size)
 
         # Split to make minibatch iterator for updating the actor
         # See PPO paper for details. https://arxiv.org/abs/1707.06347
@@ -267,11 +270,15 @@ class MmDataParallelPPOActor(DataParallelPPOActor):
             _multi_modal_inputs = np.array(_processed_images, dtype=object)
             data.non_tensor_batch['multi_modal_inputs'] = _multi_modal_inputs
             del data.non_tensor_batch['multi_modal_data']
-            num_mini_batches = data.batch.batch_size[0] // self.config.ppo_mini_batch_size
+            if actual_batch_size % effective_mini_batch_size == 0:
+                num_mini_batches = actual_batch_size // effective_mini_batch_size
+            else:
+                num_mini_batches = 1
+            num_mini_batches = max(1, num_mini_batches)
             non_tensor_select_keys = ['multi_modal_inputs']
             dataloader = data.select(select_keys, non_tensor_select_keys).chunk(num_mini_batches)
         else:
-            dataloader = batch.split(self.config.ppo_mini_batch_size)
+            dataloader = batch.split(effective_mini_batch_size)
 
         metrics = {}
         for epoch in range(self.config.ppo_epochs):
@@ -279,18 +286,22 @@ class MmDataParallelPPOActor(DataParallelPPOActor):
                 # split batch into micro_batches
                 mini_batch = data
                 if has_multi_modal_inputs:
-                    self.gradient_accumulation = (
-                        self.config.ppo_mini_batch_size // self.config.ppo_micro_batch_size_per_gpu
-                    )
-                    num_micro_batches = mini_batch.batch.batch_size[0] // self.config.ppo_micro_batch_size_per_gpu
+                    mini_batch_size = mini_batch.batch.batch_size[0]
+                    if mini_batch_size % self.config.ppo_micro_batch_size_per_gpu == 0:
+                        num_micro_batches = mini_batch_size // self.config.ppo_micro_batch_size_per_gpu
+                    else:
+                        num_micro_batches = 1
+                    num_micro_batches = max(1, num_micro_batches)
+                    self.gradient_accumulation = num_micro_batches
                     micro_batches = data.select(select_keys, non_tensor_select_keys).chunk(num_micro_batches)
                 elif self.config.use_dynamic_bsz:
                     max_token_len = self.config.ppo_max_token_len_per_gpu * self.ulysses_sequence_parallel_size
                     micro_batches, _ = rearrange_micro_batches(batch=mini_batch, max_token_len=max_token_len)
                 else:
                     self.gradient_accumulation = (
-                        self.config.ppo_mini_batch_size // self.config.ppo_micro_batch_size_per_gpu
+                        effective_mini_batch_size // self.config.ppo_micro_batch_size_per_gpu
                     )
+                    self.gradient_accumulation = max(1, self.gradient_accumulation)
                     # split batch into micro_batches
                     micro_batches = mini_batch.split(self.config.ppo_micro_batch_size_per_gpu)
 
