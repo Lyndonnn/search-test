@@ -171,6 +171,7 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   trainer.reward_shaping_mode="${REWARD_SHAPING_MODE:-outcome_only}" \
   trainer.search_action_bonus="${SEARCH_ACTION_BONUS:-0.0}" \
   trainer.search_action_bonus_correct_only="${SEARCH_ACTION_BONUS_CORRECT_ONLY:-True}" \
+  trainer.dagig_proxy_require_correct="${DAGIG_PROXY_REQUIRE_CORRECT:-True}" \
   trainer.val_before_train="${VAL_BEFORE_TRAIN:-True}" \
   trainer.val_generations_to_log_to_wandb="${VAL_GENERATIONS_TO_LOG:-0}" \
   trainer.default_local_dir="$CHECKPOINT_DIR" \

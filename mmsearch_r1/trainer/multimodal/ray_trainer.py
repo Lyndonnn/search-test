@@ -1158,6 +1158,10 @@ class RayPPOTrainer:
                                 new_batch.non_tensor_batch['extra_info'][item_id][
                                     'search_action_bonus_correct_only'
                                 ] = self.config.trainer.search_action_bonus_correct_only
+                            if 'dagig_proxy_require_correct' in self.config.trainer:
+                                new_batch.non_tensor_batch['extra_info'][item_id][
+                                    'dagig_proxy_require_correct'
+                                ] = self.config.trainer.dagig_proxy_require_correct
                         new_batch.non_tensor_batch['extra_info'] = np.array(new_batch.non_tensor_batch['extra_info'])
 
                         # we combine with rule-based rm

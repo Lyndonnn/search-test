@@ -37,6 +37,7 @@ FORMAT_PENALTY="${FORMAT_PENALTY:-0.1}" \
 REWARD_SHAPING_MODE="dagig_lite_proxy" \
 SEARCH_ACTION_BONUS="$BONUS" \
 SEARCH_ACTION_BONUS_CORRECT_ONLY="${SEARCH_ACTION_BONUS_CORRECT_ONLY:-False}" \
+DAGIG_PROXY_REQUIRE_CORRECT="${DAGIG_PROXY_REQUIRE_CORRECT:-True}" \
 bash mmsearch_r1/scripts/run_mmsearch_r1_grpo_a100_debug.sh
 
 python3 scripts/extract_mmsearch_train_metrics.py \
