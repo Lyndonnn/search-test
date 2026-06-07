@@ -15,7 +15,12 @@ if [ -z "${HF_ENDPOINT:-}" ] && [ -d /root/autodl-tmp ]; then
   export HF_ENDPOINT="https://hf-mirror.com"
 fi
 export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-$HF_HOME/hub}"
-export TRANSFORMERS_CACHE="${TRANSFORMERS_CACHE:-$HF_HOME}"
+if [ -z "${TRANSFORMERS_CACHE:-}" ] || [ "$TRANSFORMERS_CACHE" = "$HF_HOME" ]; then
+  # Keep Transformers and huggingface_hub on the same cache root. Otherwise
+  # manual snapshot_download(cache_dir=$HF_HOME/hub) is invisible to
+  # AutoModel.from_pretrained when TRANSFORMERS_CACHE points at $HF_HOME.
+  export TRANSFORMERS_CACHE="$HUGGINGFACE_HUB_CACHE"
+fi
 export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-$HF_HOME/datasets}"
 export HF_HUB_ETAG_TIMEOUT="${HF_HUB_ETAG_TIMEOUT:-60}"
 export HF_HUB_DOWNLOAD_TIMEOUT="${HF_HUB_DOWNLOAD_TIMEOUT:-600}"
