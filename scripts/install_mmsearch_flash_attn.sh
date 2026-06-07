@@ -14,6 +14,14 @@ source scripts/mmsearch_r1_env.sh
 
 FLASH_ATTN_VERSION="${FLASH_ATTN_VERSION:-2.7.4.post1}"
 MAX_JOBS="${MAX_JOBS:-4}"
+FLASH_ATTN_TMPDIR="${FLASH_ATTN_TMPDIR:-${DAGIG_DATA_ROOT:-$ROOT/data/cache/dagig_local}/tmp/flash_attn}"
+FLASH_ATTN_PIP_CACHE_DIR="${FLASH_ATTN_PIP_CACHE_DIR:-${DAGIG_DATA_ROOT:-$ROOT/data/cache/dagig_local}/pip_cache}"
+
+mkdir -p "$FLASH_ATTN_TMPDIR" "$FLASH_ATTN_PIP_CACHE_DIR"
+export TMPDIR="$FLASH_ATTN_TMPDIR"
+export TEMP="$FLASH_ATTN_TMPDIR"
+export TMP="$FLASH_ATTN_TMPDIR"
+export PIP_CACHE_DIR="$FLASH_ATTN_PIP_CACHE_DIR"
 
 python3 - <<'PY'
 import platform
@@ -29,7 +37,10 @@ if torch.cuda.is_available():
 PY
 
 python3 -m pip install -U "setuptools<81" wheel packaging ninja
-MAX_JOBS="$MAX_JOBS" python3 -m pip install "flash-attn==$FLASH_ATTN_VERSION" --no-build-isolation
+MAX_JOBS="$MAX_JOBS" python3 -m pip install \
+  "flash-attn==$FLASH_ATTN_VERSION" \
+  --no-build-isolation \
+  --no-cache-dir
 
 python3 - <<'PY'
 from importlib.metadata import version
