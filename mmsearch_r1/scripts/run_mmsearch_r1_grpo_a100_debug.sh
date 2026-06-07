@@ -113,9 +113,9 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   data.max_prompt_length="${MAX_PROMPT_LENGTH:-2048}" \
   data.max_response_length="${MAX_RESPONSE_LENGTH:-512}" \
   data.image_key=images \
-  data.user_prompt_round_1=mmsearch_r1/prompts/round_1_user_prompt_qwenvl.pkl \
-  data.user_prompt_after_image_search=mmsearch_r1/prompts/after_image_search_prompt_qwenvl.pkl \
-  data.user_prompt_after_text_search=mmsearch_r1/prompts/after_text_search_prompt_qwenvl.pkl \
+  data.user_prompt_round_1="${USER_PROMPT_ROUND_1:-mmsearch_r1/prompts/round_1_user_prompt_qwenvl.pkl}" \
+  data.user_prompt_after_image_search="${USER_PROMPT_AFTER_IMAGE_SEARCH:-mmsearch_r1/prompts/after_image_search_prompt_qwenvl.pkl}" \
+  data.user_prompt_after_text_search="${USER_PROMPT_AFTER_TEXT_SEARCH:-mmsearch_r1/prompts/after_text_search_prompt_qwenvl.pkl}" \
   actor_rollout_ref.model.path="$MODEL_PATH" \
   actor_rollout_ref.model.attn_implementation="${ATTN_IMPLEMENTATION:-eager}" \
   actor_rollout_ref.model.disable_monkey_patch="${DISABLE_MONKEY_PATCH:-True}" \
