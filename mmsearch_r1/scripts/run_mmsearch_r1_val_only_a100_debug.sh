@@ -60,9 +60,15 @@ if (( N_GPUS % VLLM_TENSOR_PARALLEL_SIZE != 0 )); then
   exit 1
 fi
 VLLM_GPU_MEMORY_UTILIZATION="${VLLM_GPU_MEMORY_UTILIZATION:-0.45}"
+TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-$N_GPUS}"
+if (( TRAIN_BATCH_SIZE % N_GPUS != 0 )); then
+  echo "TRAIN_BATCH_SIZE=$TRAIN_BATCH_SIZE must be divisible by N_GPUS=$N_GPUS for veRL validation."
+  echo "Set TRAIN_BATCH_SIZE=$N_GPUS or another multiple of $N_GPUS."
+  exit 1
+fi
 VAL_ONLY_SAVE_DIR="${VAL_ONLY_SAVE_DIR:-results/mmsearch_r1/val_only_a100_debug}"
 
-echo "MMSearch-R1 val-only GPUs: N_GPUS=$N_GPUS VLLM_TENSOR_PARALLEL_SIZE=$VLLM_TENSOR_PARALLEL_SIZE VLLM_GPU_MEMORY_UTILIZATION=$VLLM_GPU_MEMORY_UTILIZATION"
+echo "MMSearch-R1 val-only GPUs: N_GPUS=$N_GPUS VLLM_TENSOR_PARALLEL_SIZE=$VLLM_TENSOR_PARALLEL_SIZE VLLM_GPU_MEMORY_UTILIZATION=$VLLM_GPU_MEMORY_UTILIZATION TRAIN_BATCH_SIZE=$TRAIN_BATCH_SIZE"
 
 if [[ ! -f "$TRAIN_DATA_PATH" || ! -f "$VAL_DATA_PATH" ]]; then
   echo "Missing FVQA parquet. Run: make mmsearch_prepare_fvqa_debug"
@@ -79,7 +85,7 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   algorithm.adv_estimator=grpo \
   data.train_files="$TRAIN_DATA_PATH" \
   data.val_files="$VAL_DATA_PATH" \
-  data.train_batch_size="${TRAIN_BATCH_SIZE:-1}" \
+  data.train_batch_size="$TRAIN_BATCH_SIZE" \
   data.num_workers="${DATA_NUM_WORKERS:-0}" \
   data.max_prompt_length="${MAX_PROMPT_LENGTH:-2048}" \
   data.max_response_length="${MAX_RESPONSE_LENGTH:-512}" \
