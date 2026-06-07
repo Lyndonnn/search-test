@@ -1,8 +1,27 @@
+import re
+
 import torch
 from verl import DataProto
 
 from mmsearch_r1.workers.multimodal.reward.answer_utils import normalize_answer_list
 from mmsearch_r1.utils.reward_score_mm import _default_compute_score
+
+
+TEXT_SEARCH_RE = re.compile(r"<text_search>.*?</text_search>", re.DOTALL)
+IMAGE_SEARCH_TEXT = "<search><img></search>"
+
+
+def find_subsequence(haystack: list[int], needle: list[int]) -> int:
+    if not needle or len(needle) > len(haystack):
+        return -1
+    first = needle[0]
+    max_start = len(haystack) - len(needle)
+    for start in range(max_start + 1):
+        if haystack[start] != first:
+            continue
+        if haystack[start : start + len(needle)] == needle:
+            return start
+    return -1
 
 
 class MMSearchR1_RewardManager:
@@ -34,6 +53,53 @@ class MMSearchR1_RewardManager:
         # decoded_responses = [tokenizer.decode(seg, skip_special_tokens=True) for seg in segments]
         decoded_responses = tokenizer.batch_decode(segments, skip_special_tokens=True)
         return decoded_responses
+
+    def search_action_spans(self, valid_response_ids: list[int], decoded_responses: list[str]) -> list[tuple[int, int, str]]:
+        spans = []
+        for response in decoded_responses:
+            action_texts = []
+            action_texts.extend(match.group(0) for match in TEXT_SEARCH_RE.finditer(response))
+            if IMAGE_SEARCH_TEXT in response:
+                action_texts.append(IMAGE_SEARCH_TEXT)
+
+            for action_text in action_texts:
+                action_ids = self.tokenizer.encode(action_text, add_special_tokens=False)
+                start = find_subsequence(valid_response_ids, action_ids)
+                if start >= 0:
+                    tool_type = "image_search" if action_text == IMAGE_SEARCH_TEXT else "text_search"
+                    spans.append((start, start + len(action_ids), tool_type))
+        return spans
+
+    def apply_search_success_shaping(
+        self,
+        reward_tensor: torch.Tensor,
+        row_idx: int,
+        valid_response_ids: list[int],
+        decoded_responses: list[str],
+        score: float,
+        extra_info,
+    ) -> None:
+        if not extra_info:
+            return
+        mode = extra_info.get("reward_shaping_mode", "outcome_only")
+        if mode not in {"search_success_shaping", "dagig_lite_proxy"}:
+            return
+
+        bonus = float(extra_info.get("search_action_bonus", 0.0) or 0.0)
+        if bonus <= 0:
+            return
+
+        correct_threshold = float(extra_info.get("format_penalty", 0.1) or 0.1) + 1e-4
+        if bool(extra_info.get("search_action_bonus_correct_only", True)) and score <= correct_threshold:
+            return
+
+        spans = self.search_action_spans(valid_response_ids, decoded_responses)
+        if not spans:
+            return
+
+        for start, end, _tool_type in spans:
+            length = max(end - start, 1)
+            reward_tensor[row_idx, start:end] += bonus / length
 
     def __call__(self, data: DataProto):
         """We will expand this function gradually based on the available datasets"""
@@ -90,6 +156,14 @@ class MMSearchR1_RewardManager:
                 extra_info=extra_info,
             )
             reward_tensor[i, valid_response_length - 1] = score
+            self.apply_search_success_shaping(
+                reward_tensor,
+                i,
+                valid_response_ids.tolist(),
+                response_str,
+                score,
+                extra_info,
+            )
 
             if data_source not in already_print_data_sources:
                 already_print_data_sources[data_source] = 0

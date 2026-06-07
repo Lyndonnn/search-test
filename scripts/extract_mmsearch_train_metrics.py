@@ -32,6 +32,15 @@ def newest_log() -> str:
 
 
 def extract_metrics(path: str, method: str = "") -> dict[str, Any]:
+    if path.endswith(".json"):
+        with open(path, "r", encoding="utf-8") as f:
+            loaded = json.load(f)
+        if not isinstance(loaded, dict):
+            raise TypeError(f"Expected a JSON object in {path}, got {type(loaded)}")
+        metrics = {"method": method or str(loaded.get("experiment_name") or os.path.basename(os.path.dirname(path))), "source_log": path}
+        metrics.update(loaded)
+        return add_stable_aliases(metrics)
+
     final_line = ""
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -45,6 +54,10 @@ def extract_metrics(path: str, method: str = "") -> dict[str, Any]:
     for key, value in METRIC_RE.findall(final_line):
         metrics[key] = float(value)
 
+    return add_stable_aliases(metrics)
+
+
+def add_stable_aliases(metrics: dict[str, Any]) -> dict[str, Any]:
     # Stable aliases used by paper table scripts.
     val_score_keys = [k for k in metrics if k.startswith("val/") and k.endswith("/score")]
     val_reward_keys = [k for k in metrics if k.startswith("val/") and k.endswith("/reward")]
@@ -98,4 +111,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

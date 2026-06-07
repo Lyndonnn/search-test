@@ -1,5 +1,6 @@
 import os
 import uuid
+import json
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -54,6 +55,38 @@ from mmsearch_r1.utils.dataset.mm_rl_dataset import RLHFDataset, collate_fn
 
 WorkerType = Type[Worker]
 import torch
+
+
+def _jsonable_metric_value(value):
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return float(value)
+    if isinstance(value, torch.Tensor):
+        if value.numel() == 1:
+            return _jsonable_metric_value(value.detach().cpu().item())
+        return value.detach().cpu().tolist()
+    return value
+
+
+def _write_validation_metrics(config, step, metrics, label):
+    log_dir = config.trainer.get('rollout_log_dir', None)
+    if not log_dir:
+        return
+    os.makedirs(log_dir, exist_ok=True)
+    row = {
+        "step": int(step),
+        "label": label,
+        "experiment_name": config.trainer.get("experiment_name", ""),
+    }
+    row.update({key: _jsonable_metric_value(value) for key, value in metrics.items()})
+    jsonl_path = os.path.join(log_dir, "metrics.jsonl")
+    with open(jsonl_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+    if label in {"initial_validation", "final_validation"}:
+        final_path = os.path.join(log_dir, f"{label}.json")
+        with open(final_path, "w", encoding="utf-8") as f:
+            json.dump(row, f, ensure_ascii=False, indent=2, sort_keys=True)
 
 
 def _compute_response_info(batch):
@@ -994,6 +1027,7 @@ class RayPPOTrainer:
         if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
             val_metrics = self._validate()
             pprint(f'Initial validation metrics: {val_metrics}')
+            _write_validation_metrics(self.config, self.global_steps, val_metrics, "initial_validation")
             logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get('val_only', False):
                 return
@@ -1112,6 +1146,18 @@ class RayPPOTrainer:
                                 new_batch.non_tensor_batch['extra_info'][item_id][
                                     'use_search_count_penalty'
                                 ] = use_search_count_penalty
+                            if 'reward_shaping_mode' in self.config.trainer:
+                                new_batch.non_tensor_batch['extra_info'][item_id][
+                                    'reward_shaping_mode'
+                                ] = self.config.trainer.reward_shaping_mode
+                            if 'search_action_bonus' in self.config.trainer:
+                                new_batch.non_tensor_batch['extra_info'][item_id][
+                                    'search_action_bonus'
+                                ] = self.config.trainer.search_action_bonus
+                            if 'search_action_bonus_correct_only' in self.config.trainer:
+                                new_batch.non_tensor_batch['extra_info'][item_id][
+                                    'search_action_bonus_correct_only'
+                                ] = self.config.trainer.search_action_bonus_correct_only
                         new_batch.non_tensor_batch['extra_info'] = np.array(new_batch.non_tensor_batch['extra_info'])
 
                         # we combine with rule-based rm
@@ -1277,8 +1323,12 @@ class RayPPOTrainer:
                     ):
                         with _timer('testing', timing_raw):
                             val_metrics: dict = self._validate()
+                            _write_validation_metrics(self.config, self.global_steps, val_metrics, "validation")
                             if is_last_step:
                                 last_val_metrics = val_metrics
+                                _write_validation_metrics(
+                                    self.config, self.global_steps, last_val_metrics, "final_validation"
+                                )
                         metrics.update(val_metrics)
 
                     if self.config.trainer.save_freq > 0 and self.global_steps % self.config.trainer.save_freq == 0:

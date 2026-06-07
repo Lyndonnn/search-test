@@ -33,36 +33,38 @@ if ls results/mmsearch_r1/val_only_a100_debug/val_result_*.json >/dev/null 2>&1;
 fi
 
 echo "[3/4] Outcome-only GRPO baseline."
+OUTCOME_LOG_DIR="$RESULT_ROOT/logs/outcome_only_${STEPS}step"
+mkdir -p "$OUTCOME_LOG_DIR"
 WANDB_EXP_NAME="outcome_only_fvqa${TRAIN_LIMIT}_${STEPS}step" \
 TOTAL_TRAINING_STEPS="$STEPS" \
 TEST_FREQ="$TEST_FREQ" \
 SAVE_FREQ="$SAVE_FREQ" \
+ROLLOUT_LOG_DIR="$OUTCOME_LOG_DIR" \
 SEARCH_PENALTY="${SEARCH_PENALTY:-0.1}" \
 FORMAT_PENALTY="${FORMAT_PENALTY:-0.1}" \
 make mmsearch_grpo_a100_debug
-OUTCOME_LOG="$(ls -t outputs/*/*/main_ppo.log | head -n 1)"
 python3 scripts/extract_mmsearch_train_metrics.py \
-  --input "$OUTCOME_LOG" \
+  --input "$OUTCOME_LOG_DIR/final_validation.json" \
   --method "outcome_only_${STEPS}step" \
   --output-csv "$RESULT_ROOT/outcome_only_${STEPS}step.csv" \
   --output-json "$RESULT_ROOT/outcome_only_${STEPS}step_metrics.json"
-cp "$OUTCOME_LOG" "$RESULT_ROOT/outcome_only_${STEPS}step_main_ppo.log"
 
 echo "[4/4] Outcome-only without search penalty. This isolates whether collapse comes from explicit tool cost."
+NO_PENALTY_LOG_DIR="$RESULT_ROOT/logs/outcome_no_search_penalty_${STEPS}step"
+mkdir -p "$NO_PENALTY_LOG_DIR"
 WANDB_EXP_NAME="outcome_no_search_penalty_fvqa${TRAIN_LIMIT}_${STEPS}step" \
 TOTAL_TRAINING_STEPS="$STEPS" \
 TEST_FREQ="$TEST_FREQ" \
 SAVE_FREQ="$SAVE_FREQ" \
+ROLLOUT_LOG_DIR="$NO_PENALTY_LOG_DIR" \
 SEARCH_PENALTY="0.0" \
 FORMAT_PENALTY="${FORMAT_PENALTY:-0.1}" \
 make mmsearch_grpo_a100_debug
-NO_PENALTY_LOG="$(ls -t outputs/*/*/main_ppo.log | head -n 1)"
 python3 scripts/extract_mmsearch_train_metrics.py \
-  --input "$NO_PENALTY_LOG" \
+  --input "$NO_PENALTY_LOG_DIR/final_validation.json" \
   --method "outcome_no_search_penalty_${STEPS}step" \
   --output-csv "$RESULT_ROOT/outcome_no_search_penalty_${STEPS}step.csv" \
   --output-json "$RESULT_ROOT/outcome_no_search_penalty_${STEPS}step_metrics.json"
-cp "$NO_PENALTY_LOG" "$RESULT_ROOT/outcome_no_search_penalty_${STEPS}step_main_ppo.log"
 
 echo "Mainline matrix completed. Compact outputs:"
 find "$RESULT_ROOT" -maxdepth 1 -type f -print | sort

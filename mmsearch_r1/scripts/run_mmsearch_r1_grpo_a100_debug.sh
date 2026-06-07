@@ -168,6 +168,9 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   trainer.search_penalty="${SEARCH_PENALTY:-0.1}" \
   trainer.format_penalty="${FORMAT_PENALTY:-0.1}" \
   trainer.reward_mode="${REWARD_MODE:-EM}" \
+  trainer.reward_shaping_mode="${REWARD_SHAPING_MODE:-outcome_only}" \
+  trainer.search_action_bonus="${SEARCH_ACTION_BONUS:-0.0}" \
+  trainer.search_action_bonus_correct_only="${SEARCH_ACTION_BONUS_CORRECT_ONLY:-True}" \
   trainer.val_before_train="${VAL_BEFORE_TRAIN:-True}" \
   trainer.val_generations_to_log_to_wandb="${VAL_GENERATIONS_TO_LOG:-0}" \
   trainer.default_local_dir="$CHECKPOINT_DIR" \

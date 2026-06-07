@@ -226,6 +226,9 @@ trainer:
   search_penalty: 0.1
   format_penalty: 0.1
   reward_mode: EM
+  reward_shaping_mode: outcome_only
+  search_action_bonus: 0.0
+  search_action_bonus_correct_only: True
   val_before_train: True
   del_local_ckpt_after_load: False
   default_local_dir: checkpoints/${trainer.project_name}/${trainer.experiment_name}
