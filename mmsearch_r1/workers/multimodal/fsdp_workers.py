@@ -539,6 +539,7 @@ class ActorRolloutRefWorker(Worker):
                 optimizer=self.actor.actor_optimizer,
                 lr_scheduler=self.actor_lr_scheduler,
                 processing_class=self.processor if self.processor is not None else self.tokenizer,
+                checkpoint_config=self.config.actor.get('checkpoint', None),
             )
 
         torch.cuda.empty_cache()
@@ -936,6 +937,7 @@ class CriticWorker(Worker):
             optimizer=self.critic_optimizer,
             lr_scheduler=self.critic_lr_scheduler,
             processing_class=self.processor if self.processor is not None else self.tokenizer,
+            checkpoint_config=self.config.get('checkpoint', None),
         )
 
         torch.cuda.empty_cache()

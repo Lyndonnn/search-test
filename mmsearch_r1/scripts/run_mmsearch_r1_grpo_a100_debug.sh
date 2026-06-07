@@ -76,6 +76,9 @@ fi
 TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-$N_GPUS}"
 ROLLOUT_N="${ROLLOUT_N:-2}"
 PPO_MINI_BATCH_SIZE="${PPO_MINI_BATCH_SIZE:-1}"
+CHECKPOINT_DIR="${CHECKPOINT_DIR:-${DAGIG_DATA_ROOT:-$ROOT/data/cache/dagig_local}/checkpoints/mmsearch_r1/grpo_a100_debug}"
+CHECKPOINT_SAVE_CONTENTS="${CHECKPOINT_SAVE_CONTENTS:-[model,extra]}"
+CHECKPOINT_LOAD_CONTENTS="${CHECKPOINT_LOAD_CONTENTS:-$CHECKPOINT_SAVE_CONTENTS}"
 if (( TRAIN_BATCH_SIZE % N_GPUS != 0 )); then
   echo "TRAIN_BATCH_SIZE=$TRAIN_BATCH_SIZE must be divisible by N_GPUS=$N_GPUS before rollout generation."
   echo "Set TRAIN_BATCH_SIZE=$N_GPUS or another multiple of $N_GPUS."
@@ -90,6 +93,7 @@ if (( REAL_TRAIN_BATCH_SIZE % N_GPUS != 0 )); then
 fi
 
 echo "MMSearch-R1 GRPO debug GPUs: N_GPUS=$N_GPUS VLLM_TENSOR_PARALLEL_SIZE=$VLLM_TENSOR_PARALLEL_SIZE VLLM_GPU_MEMORY_UTILIZATION=$VLLM_GPU_MEMORY_UTILIZATION TRAIN_BATCH_SIZE=$TRAIN_BATCH_SIZE ROLLOUT_N=$ROLLOUT_N"
+echo "MMSearch-R1 GRPO debug checkpoint: CHECKPOINT_DIR=$CHECKPOINT_DIR CHECKPOINT_SAVE_CONTENTS=$CHECKPOINT_SAVE_CONTENTS"
 
 if [[ ! -f "$TRAIN_DATA_PATH" || ! -f "$VAL_DATA_PATH" ]]; then
   echo "Missing FVQA parquet. Run: make mmsearch_prepare_fvqa_debug"
@@ -118,6 +122,8 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   actor_rollout_ref.actor.optim.lr="${ACTOR_LR:-1e-6}" \
   actor_rollout_ref.actor.optim.lr_sigmoid_decay_warmup=False \
   actor_rollout_ref.actor.optim.foreach="${ADAMW_FOREACH:-False}" \
+  actor_rollout_ref.actor.checkpoint.save_contents="$CHECKPOINT_SAVE_CONTENTS" \
+  actor_rollout_ref.actor.checkpoint.load_contents="$CHECKPOINT_LOAD_CONTENTS" \
   actor_rollout_ref.model.use_remove_padding="${USE_REMOVE_PADDING:-False}" \
   actor_rollout_ref.model.enable_gradient_checkpointing=True \
   actor_rollout_ref.actor.ppo_mini_batch_size="$PPO_MINI_BATCH_SIZE" \
@@ -164,5 +170,5 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   trainer.reward_mode="${REWARD_MODE:-EM}" \
   trainer.val_before_train="${VAL_BEFORE_TRAIN:-True}" \
   trainer.val_generations_to_log_to_wandb="${VAL_GENERATIONS_TO_LOG:-0}" \
-  trainer.default_local_dir="${CHECKPOINT_DIR:-checkpoints/mmsearch_r1/grpo_a100_debug}" \
+  trainer.default_local_dir="$CHECKPOINT_DIR" \
   trainer.rollout_log_dir="${ROLLOUT_LOG_DIR:-logs/mmsearch_r1/grpo_a100_debug}"

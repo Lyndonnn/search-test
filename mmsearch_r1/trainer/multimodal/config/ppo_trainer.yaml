@@ -61,6 +61,10 @@ actor_rollout_ref:
       lr_sigmoid_decay_ratio: 0 # how much to decay is sigmoid lr decay is used (0 for no decay)
       lr_sigmoid_decay_warmup_steps: 60 # roughly how many steps to keep high lr
       foreach: null # set False for small single-GPU debug runs to reduce AdamW temporary memory
+    checkpoint:
+      save_contents: ['model', 'optimizer', 'extra']
+      load_contents: ${.save_contents}
+      async_save: False
     fsdp_config:
       wrap_policy:
         # transformer_layer_cls_to_wrap: None
@@ -164,6 +168,10 @@ critic:
   shuffle: ${actor_rollout_ref.actor.shuffle}
   grad_clip: 1.0
   cliprange_value: 0.5
+  checkpoint:
+    save_contents: ['model', 'optimizer', 'extra']
+    load_contents: ${.save_contents}
+    async_save: False
 
 reward_model:
   enable: False
