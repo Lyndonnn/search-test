@@ -1,13 +1,16 @@
 import unittest
+from tempfile import TemporaryDirectory
 
 from data.schema import toy_samples
 from eval.run_offline_dependency_relabel import (
     build_dependency_trajectories,
+    ensure_support_indexes,
     mmsearch_row_to_sample,
     summarize_edges,
 )
 from reward.dag_ig import DAGIGLiteReward
 from reward.typed_pool import TypedCounterfactualPool
+from utils.io import read_jsonl
 
 
 class OfflineDependencyRelabelTest(unittest.TestCase):
@@ -65,6 +68,17 @@ class OfflineDependencyRelabelTest(unittest.TestCase):
         self.assertIn("vegas", sample.gold_answers)
         self.assertIn("Las Vegas", sample.gold_answers)
         self.assertEqual(sample.images[0], "mmsearch_r1/data/fvqa_debug_images/train_0.png")
+
+    def test_auto_builds_diagnostic_support_indexes(self):
+        samples = toy_samples()[:3]
+        with TemporaryDirectory() as tmpdir:
+            text_path = f"{tmpdir}/missing_text.jsonl"
+            image_path = f"{tmpdir}/missing_image.jsonl"
+            support_text, support_image = ensure_support_indexes(samples, text_path, image_path)
+            self.assertTrue(support_text.endswith(".dagig_support.jsonl"))
+            self.assertTrue(support_image.endswith(".dagig_support.jsonl"))
+            self.assertEqual(len(read_jsonl(support_text)), 3)
+            self.assertEqual(len(read_jsonl(support_image)), 3)
 
 
 if __name__ == "__main__":

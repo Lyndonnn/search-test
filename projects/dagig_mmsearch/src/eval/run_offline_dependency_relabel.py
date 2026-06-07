@@ -9,7 +9,7 @@ from typing import Any
 
 from agent.policy_wrapper import SimpleTokenizer
 from agent.rollout import _make_step
-from data.dataset_mixer import read_samples_jsonl
+from data.dataset_mixer import build_indexes_from_samples, read_samples_jsonl
 from data.schema import VQASample, toy_samples
 from eval.metrics import exact_match
 from reward.dag_ig import DAGIGLiteReward
@@ -22,7 +22,7 @@ from tools.dispatcher import ToolDispatcher
 from train.trainer_utils import load_config
 from utils.gpu_check import main as print_gpu_check
 from utils.hf_reference import load_reference_policy_from_config
-from utils.io import write_csv, write_jsonl
+from utils.io import read_jsonl, write_csv, write_jsonl
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--search-topk", type=int, default=5)
     parser.add_argument("--use-reference", action="store_true", help="Load frozen HF reference policy for logprob.")
     parser.add_argument("--keep-early-answer", action="store_true", help="Do not redact gold answer from step-0 observation.")
+    parser.add_argument("--no-auto-index", action="store_true", help="Do not build diagnostic support indexes when inputs are unusable.")
     parser.add_argument("--min-future-ig", type=float, default=0.02)
     parser.add_argument("--output", default="results/dagig_offline/dependency_relabel.jsonl")
     parser.add_argument("--selected-output", default="results/dagig_offline/dependency_relabel_selected.jsonl")
@@ -61,10 +62,16 @@ def main() -> None:
         policy = load_reference_policy_from_config(cfg)
 
     samples = load_samples(args.samples_jsonl, args.parquet, args.limit)
+    text_index_path, image_index_path = ensure_support_indexes(
+        samples,
+        args.text_index,
+        args.image_index,
+        auto_build=not args.no_auto_index,
+    )
     trajectories = build_dependency_trajectories(
         samples,
-        text_index_path=args.text_index,
-        image_index_path=args.image_index,
+        text_index_path=text_index_path,
+        image_index_path=image_index_path,
         search_topk=args.search_topk,
         redact_early_answer=not args.keep_early_answer,
     )
@@ -161,6 +168,81 @@ def load_samples(samples_jsonl: str, parquet_path: str, limit: int) -> list[VQAS
         f"Checked samples_jsonl={samples_jsonl or '<toy default>'} and parquet={parquet_path}. "
         "Run `make prepare_real_data` or `make mmsearch_prepare_fvqa_debug` first."
     )
+
+
+def ensure_support_indexes(
+    samples: list[VQASample],
+    text_index_path: str,
+    image_index_path: str,
+    auto_build: bool = True,
+    min_coverage: float = 0.5,
+) -> tuple[str, str]:
+    text_rows = read_jsonl(text_index_path)
+    image_rows = read_jsonl(image_index_path)
+    reason = support_index_problem(samples, text_rows, image_rows, min_coverage=min_coverage)
+    if reason is None:
+        return text_index_path, image_index_path
+    if not auto_build:
+        raise RuntimeError(
+            "Offline dependency relabel needs an index that can retrieve support evidence. "
+            f"Input index is unusable: {reason}. "
+            "Unset DAGIG_RELABEL_NO_AUTO_INDEX or provide aligned text/image indexes."
+        )
+
+    support_text_path = diagnostic_support_path(text_index_path)
+    support_image_path = diagnostic_support_path(image_index_path)
+    build_indexes_from_samples(samples, text_path=support_text_path, image_path=support_image_path)
+    print(
+        "warning: using diagnostic gold-derived support indexes for offline relabel only; "
+        f"reason={reason}; text_index={support_text_path}; image_index={support_image_path}"
+    )
+    return support_text_path, support_image_path
+
+
+def diagnostic_support_path(path: str) -> str:
+    source = Path(path)
+    suffix = source.suffix or ".jsonl"
+    return str(source.with_name(f"{source.stem}.dagig_support{suffix}"))
+
+
+def support_index_problem(
+    samples: list[VQASample],
+    text_rows: list[dict[str, Any]],
+    image_rows: list[dict[str, Any]],
+    min_coverage: float,
+) -> str | None:
+    if not text_rows:
+        return "text_index_missing_or_empty"
+    if not image_rows:
+        return "image_index_missing_or_empty"
+
+    sample_ids = {sample.sample_id for sample in samples if sample.sample_id}
+    if sample_ids:
+        text_ids = {str(row.get("sample_id")) for row in text_rows if row.get("sample_id") is not None}
+        image_ids = {str(row.get("sample_id")) for row in image_rows if row.get("sample_id") is not None}
+        if text_ids or image_ids:
+            text_overlap = len(sample_ids & text_ids) / max(1, len(sample_ids))
+            image_overlap = len(sample_ids & image_ids) / max(1, len(sample_ids))
+            if min(text_overlap, image_overlap) < min_coverage:
+                return f"sample_id_overlap_low:text={text_overlap:.3f},image={image_overlap:.3f}"
+            return None
+
+    text_answer_coverage = answer_coverage(samples, text_rows)
+    image_answer_coverage = answer_coverage(samples, image_rows)
+    if min(text_answer_coverage, image_answer_coverage) < min_coverage:
+        return f"answer_coverage_low:text={text_answer_coverage:.3f},image={image_answer_coverage:.3f}"
+    return None
+
+
+def answer_coverage(samples: list[VQASample], rows: list[dict[str, Any]]) -> float:
+    corpus = "\n".join(json.dumps(row, ensure_ascii=False).lower() for row in rows)
+    if not samples:
+        return 0.0
+    supported = 0
+    for sample in samples:
+        if any(answer and answer.lower() in corpus for answer in sample.gold_answers):
+            supported += 1
+    return supported / max(1, len(samples))
 
 
 def load_mmsearch_parquet_samples(path: str, limit: int) -> list[VQASample]:

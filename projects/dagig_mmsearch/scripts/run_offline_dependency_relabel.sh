@@ -39,5 +39,8 @@ fi
 if [[ "${DAGIG_RELABEL_KEEP_EARLY_ANSWER:-0}" == "1" ]]; then
   ARGS+=(--keep-early-answer)
 fi
+if [[ "${DAGIG_RELABEL_NO_AUTO_INDEX:-0}" == "1" ]]; then
+  ARGS+=(--no-auto-index)
+fi
 
 python3 -m eval.run_offline_dependency_relabel "${ARGS[@]}"
