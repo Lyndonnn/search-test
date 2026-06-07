@@ -739,6 +739,22 @@ class RayPPOTrainer:
                     test_batch.non_tensor_batch['extra_info'][item_id][
                         'use_search_count_penalty'
                     ] = use_search_count_penalty
+                if 'reward_shaping_mode' in self.config.trainer:
+                    test_batch.non_tensor_batch['extra_info'][item_id][
+                        'reward_shaping_mode'
+                    ] = self.config.trainer.reward_shaping_mode
+                if 'search_action_bonus' in self.config.trainer:
+                    test_batch.non_tensor_batch['extra_info'][item_id][
+                        'search_action_bonus'
+                    ] = self.config.trainer.search_action_bonus
+                if 'search_action_bonus_correct_only' in self.config.trainer:
+                    test_batch.non_tensor_batch['extra_info'][item_id][
+                        'search_action_bonus_correct_only'
+                    ] = self.config.trainer.search_action_bonus_correct_only
+                if 'dagig_proxy_require_correct' in self.config.trainer:
+                    test_batch.non_tensor_batch['extra_info'][item_id][
+                        'dagig_proxy_require_correct'
+                    ] = self.config.trainer.dagig_proxy_require_correct
             test_batch.non_tensor_batch['extra_info'] = np.array(test_batch.non_tensor_batch['extra_info'])
             shaped_reward_tensor = self.val_reward_fn(test_batch)
             answer_reward_tensor = self.val_reward_fn(_answer_only_eval_batch(test_batch))
