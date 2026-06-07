@@ -49,8 +49,13 @@ mmsearch_val_only:
 	bash mmsearch_r1/scripts/run_mmsearch_r1_val_only_a100_debug.sh
 
 mmsearch_summarize_val:
+	@VAL_RESULT_PATH="$${VAL_RESULT:-$$(ls -t results/mmsearch_r1/val_only_a100_debug/val_result_*.json 2>/dev/null | head -n 1)}"; \
+	if [ -z "$$VAL_RESULT_PATH" ]; then \
+		echo "No MMSearch-R1 val result found. Run: make mmsearch_val_only"; \
+		exit 1; \
+	fi; \
 	$(PYTHON) scripts/summarize_mmsearch_val_result.py \
-		--input "$${VAL_RESULT:-results/mmsearch_r1/val_only_a100_debug/val_result_8.json}" \
+		--input "$$VAL_RESULT_PATH" \
 		--output-csv "$${VAL_SUMMARY_CSV:-paper_artifacts/tables/mmsearch_val_only_summary.csv}"
 
 mmsearch_grpo_a100_debug:
