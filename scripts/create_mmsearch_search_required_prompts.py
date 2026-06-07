@@ -20,6 +20,7 @@ You must include your reasoning inside <reason>...</reason> before calling a sea
 After search results are returned inside <information>...</information>, use the returned evidence to answer. When you are ready to answer, wrap your final answer between <answer> and </answer>, without detailed illustrations. For example: <answer>Titanic</answer>.
 
 Here is the image and the question:
+<image> 
 """
 
 
@@ -31,6 +32,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if "<image>" not in SEARCH_REQUIRED_PROMPT:
+        raise RuntimeError("Search-required prompt must keep the <image> placeholder for Qwen-VL.")
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     with open(args.output, "wb") as f:
         pickle.dump(SEARCH_REQUIRED_PROMPT, f)
@@ -39,4 +42,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
