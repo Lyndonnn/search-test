@@ -1,7 +1,11 @@
 import unittest
 
 from data.schema import toy_samples
-from eval.run_offline_dependency_relabel import build_dependency_trajectories, summarize_edges
+from eval.run_offline_dependency_relabel import (
+    build_dependency_trajectories,
+    mmsearch_row_to_sample,
+    summarize_edges,
+)
 from reward.dag_ig import DAGIGLiteReward
 from reward.typed_pool import TypedCounterfactualPool
 
@@ -46,6 +50,21 @@ class OfflineDependencyRelabelTest(unittest.TestCase):
         output = DAGIGLiteReward(cf_pool=cf_pool).compute(trajectories[0])
         self.assertEqual(len(output.step_rewards), 3)
         self.assertIn("0->1", output.diagnostics["future_action_ig"])
+
+    def test_mmsearch_parquet_row_adapter(self):
+        row = {
+            "prompt": [{"role": "user", "content": "Where is this iconic sign located?"}],
+            "reward_model": {"ground_truth": "vegas", "candidate_answers": '["Las Vegas"]'},
+            "data_source": "mmsearch_r1/fvqa_train",
+            "image_urls": "mmsearch_r1/data/fvqa_debug_images/train_0.png",
+            "extra_info": {"question_id": "fvqa_train_0"},
+        }
+        sample = mmsearch_row_to_sample(row, 0)
+        self.assertEqual(sample.sample_id, "fvqa_train_0")
+        self.assertEqual(sample.question, "Where is this iconic sign located?")
+        self.assertIn("vegas", sample.gold_answers)
+        self.assertIn("Las Vegas", sample.gold_answers)
+        self.assertEqual(sample.images[0], "mmsearch_r1/data/fvqa_debug_images/train_0.png")
 
 
 if __name__ == "__main__":

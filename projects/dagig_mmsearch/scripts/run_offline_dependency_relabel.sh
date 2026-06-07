@@ -13,6 +13,7 @@ fi
 ARGS=(
   --config "${DAGIG_RELABEL_CONFIG:-projects/dagig_mmsearch/configs/dagig_lite_qwen25vl_3b_a800.yaml}"
   --limit "${DAGIG_RELABEL_LIMIT:-32}"
+  --parquet "${DAGIG_RELABEL_PARQUET:-mmsearch_r1/data/fvqa_debug_train.pq}"
   --cf-samples "${DAGIG_RELABEL_CF_SAMPLES:-2}"
   --search-topk "${DAGIG_RELABEL_SEARCH_TOPK:-5}"
   --output "${DAGIG_RELABEL_OUTPUT:-results/dagig_offline/dependency_relabel.jsonl}"

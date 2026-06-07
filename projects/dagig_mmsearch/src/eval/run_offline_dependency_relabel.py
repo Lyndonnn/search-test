@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
 from agent.policy_wrapper import SimpleTokenizer
@@ -32,6 +34,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--config", default="projects/dagig_mmsearch/configs/dagig_lite_qwen25vl_3b_a800.yaml")
     parser.add_argument("--samples-jsonl", default="")
+    parser.add_argument("--parquet", default="mmsearch_r1/data/fvqa_debug_train.pq")
     parser.add_argument("--text-index", default="data/indexes/text_corpus.jsonl")
     parser.add_argument("--image-index", default="data/indexes/image_corpus.jsonl")
     parser.add_argument("--limit", type=int, default=32)
@@ -57,8 +60,7 @@ def main() -> None:
         print_gpu_check()
         policy = load_reference_policy_from_config(cfg)
 
-    samples = read_samples_jsonl(args.samples_jsonl) if args.samples_jsonl else toy_samples()
-    samples = [sample for sample in samples if sample.question and sample.gold_answers][: args.limit]
+    samples = load_samples(args.samples_jsonl, args.parquet, args.limit)
     trajectories = build_dependency_trajectories(
         samples,
         text_index_path=args.text_index,
@@ -134,6 +136,139 @@ def main() -> None:
     print(f"saved edge_csv={args.edge_csv}")
     print(f"saved selected_edge_csv={args.selected_edge_csv}")
     print(f"saved summary_csv={args.summary_csv}")
+
+
+def load_samples(samples_jsonl: str, parquet_path: str, limit: int) -> list[VQASample]:
+    samples: list[VQASample] = []
+    if samples_jsonl:
+        samples = read_samples_jsonl(samples_jsonl)
+        if not samples:
+            print(f"warning: no usable JSONL samples loaded from {samples_jsonl}")
+    else:
+        samples = toy_samples()
+
+    samples = [sample for sample in samples if sample.question and sample.gold_answers]
+    if samples:
+        return samples[:limit]
+
+    parquet = Path(parquet_path)
+    if parquet.is_file():
+        print(f"loading fallback MMSearch parquet samples from {parquet}")
+        return load_mmsearch_parquet_samples(str(parquet), limit)
+
+    raise RuntimeError(
+        "No samples available for offline dependency relabel. "
+        f"Checked samples_jsonl={samples_jsonl or '<toy default>'} and parquet={parquet_path}. "
+        "Run `make prepare_real_data` or `make mmsearch_prepare_fvqa_debug` first."
+    )
+
+
+def load_mmsearch_parquet_samples(path: str, limit: int) -> list[VQASample]:
+    try:
+        import pyarrow.parquet as pq
+    except Exception as exc:
+        raise RuntimeError("Reading MMSearch parquet requires pyarrow. Install pyarrow or provide DAGIG_RELABEL_SAMPLES_JSONL.") from exc
+
+    table = pq.read_table(path)
+    rows = table.to_pylist()
+    samples: list[VQASample] = []
+    for idx, row in enumerate(rows):
+        sample = mmsearch_row_to_sample(row, idx)
+        if sample.question and sample.gold_answers:
+            samples.append(sample)
+        if len(samples) >= limit:
+            break
+    if not samples:
+        raise RuntimeError(f"No usable samples found in MMSearch parquet: {path}")
+    return samples
+
+
+def mmsearch_row_to_sample(row: dict[str, Any], idx: int) -> VQASample:
+    prompt = row.get("prompt") or []
+    question = ""
+    if isinstance(prompt, list):
+        for turn in prompt:
+            if isinstance(turn, dict) and str(turn.get("role", "user")).lower() == "user":
+                question = str(turn.get("content", "")).strip()
+                if question:
+                    break
+    if not question:
+        question = str(row.get("question", row.get("query", ""))).strip()
+
+    reward_model = row.get("reward_model") or {}
+    gold_answers: list[str] = []
+    if isinstance(reward_model, dict):
+        ground_truth = reward_model.get("ground_truth")
+        if ground_truth is not None and str(ground_truth).strip():
+            gold_answers.append(str(ground_truth).strip())
+        gold_answers.extend(parse_candidate_answers(reward_model.get("candidate_answers")))
+    if not gold_answers:
+        for key in ("answer", "answers", "gold_answers", "ground_truth"):
+            value = row.get(key)
+            if value is None:
+                continue
+            if isinstance(value, list):
+                gold_answers.extend(str(item).strip() for item in value if str(item).strip())
+            elif str(value).strip():
+                gold_answers.append(str(value).strip())
+            if gold_answers:
+                break
+
+    image_urls = row.get("image_urls", "")
+    if isinstance(image_urls, list):
+        images = [str(item) for item in image_urls if str(item)]
+    elif image_urls:
+        images = [str(image_urls)]
+    else:
+        images = [f"mmsearch_parquet_image_{idx}"]
+
+    extra_info = row.get("extra_info") or {}
+    if not isinstance(extra_info, dict):
+        extra_info = {}
+    sample_id = str(extra_info.get("question_id") or row.get("sample_id") or row.get("id") or f"mmsearch_pq_{idx}")
+    return VQASample(
+        sample_id=sample_id,
+        question=question,
+        images=images,
+        gold_answers=dedupe(gold_answers),
+        metadata={
+            "source_dataset": row.get("data_source", "mmsearch_parquet"),
+            "source_format": "mmsearch_parquet",
+            "needs_search": True,
+            "extra_info": extra_info,
+        },
+    )
+
+
+def parse_candidate_answers(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if not isinstance(value, str):
+        text = str(value).strip()
+        return [text] if text else []
+    text = value.strip()
+    if not text or text == "[]":
+        return []
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        parsed = None
+    if isinstance(parsed, list):
+        return [str(item).strip() for item in parsed if str(item).strip()]
+    return [text]
+
+
+def dedupe(values: list[str]) -> list[str]:
+    out = []
+    seen = set()
+    for value in values:
+        key = value.lower()
+        if value and key not in seen:
+            out.append(value)
+            seen.add(key)
+    return out
 
 
 def build_dependency_trajectories(
