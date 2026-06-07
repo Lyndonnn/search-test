@@ -16,6 +16,16 @@ from pathlib import Path
 
 
 IMPORT_LINE = "from flash_attn.bert_padding import index_first_axis, pad_input, rearrange, unpad_input"
+BROKEN_PATCHED_IMPORT = """try:
+from flash_attn.bert_padding import index_first_axis, pad_input, rearrange, unpad_input
+
+    _FLASH_ATTN_AVAILABLE = True
+except ImportError:
+    index_first_axis = None
+    pad_input = None
+    rearrange = None
+    unpad_input = None
+    _FLASH_ATTN_AVAILABLE = False"""
 PATCHED_IMPORT = """try:
     from flash_attn.bert_padding import index_first_axis, pad_input, rearrange, unpad_input
 
@@ -39,6 +49,14 @@ REMOVE_PADDING_GUARD = """            if self.use_remove_padding:
 
 def patch_text(text: str) -> tuple[str, bool]:
     changed = False
+    if BROKEN_PATCHED_IMPORT in text:
+        text = text.replace(BROKEN_PATCHED_IMPORT, PATCHED_IMPORT, 1)
+        changed = True
+
+    if "try:\nfrom flash_attn.bert_padding import" in text:
+        text = text.replace("try:\nfrom flash_attn.bert_padding import", "try:\n    from flash_attn.bert_padding import", 1)
+        changed = True
+
     if "_FLASH_ATTN_AVAILABLE" not in text and IMPORT_LINE in text:
         text = text.replace(IMPORT_LINE, PATCHED_IMPORT, 1)
         changed = True
