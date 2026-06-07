@@ -57,6 +57,23 @@ def _is_flash_fallback_tail_line(line: str) -> bool:
     return any(stripped == f"{name} = None" for name in FLASH_FALLBACK_NAMES)
 
 
+def leading_ws(line: str) -> str:
+    return line[: len(line) - len(line.lstrip())]
+
+
+def make_patched_import(indent: str) -> list[str]:
+    return [indent + line if line else line for line in PATCHED_IMPORT.splitlines()]
+
+
+def infer_block_indent(line: str, out: list[str]) -> str:
+    indent = leading_ws(line)
+    if indent:
+        return indent
+    if out and out[-1].rstrip().endswith(":"):
+        return leading_ws(out[-1]) + "    "
+    return ""
+
+
 def normalize_flash_import_block(text: str) -> tuple[str, bool]:
     """Replace original or previously broken flash-attn fallback blocks.
 
@@ -75,7 +92,7 @@ def normalize_flash_import_block(text: str) -> tuple[str, bool]:
         next_line = lines[i + 1] if i + 1 < len(lines) else ""
 
         if stripped == "try:" and IMPORT_LINE in next_line:
-            out.extend(PATCHED_IMPORT.splitlines())
+            out.extend(make_patched_import(infer_block_indent(line, out)))
             i += 2
             while i < len(lines) and _is_flash_fallback_tail_line(lines[i]):
                 i += 1
@@ -83,7 +100,7 @@ def normalize_flash_import_block(text: str) -> tuple[str, bool]:
             continue
 
         if IMPORT_LINE in line:
-            out.extend(PATCHED_IMPORT.splitlines())
+            out.extend(make_patched_import(infer_block_indent(line, out)))
             i += 1
             while i < len(lines) and _is_flash_fallback_tail_line(lines[i]):
                 i += 1
@@ -103,12 +120,6 @@ def patch_text(text: str) -> tuple[str, bool]:
     changed = False
     text, import_changed = normalize_flash_import_block(text)
     changed = changed or import_changed
-
-    # Kept for backward compatibility with exact bad files from early debug
-    # sessions. The line-wise normalizer above should normally catch this.
-    if BROKEN_PATCHED_IMPORT in text:
-        text = text.replace(BROKEN_PATCHED_IMPORT, PATCHED_IMPORT, 1)
-        changed = True
 
     if "_FLASH_ATTN_AVAILABLE" not in text:
         raise RuntimeError("Could not locate the flash_attn import block to patch.")
