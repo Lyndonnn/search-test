@@ -45,20 +45,69 @@ REMOVE_PADDING_GUARD = """            if self.use_remove_padding:
                         "Install flash-attn or set actor_rollout_ref.model.use_remove_padding=False."
                     )
 """
+FLASH_FALLBACK_NAMES = {"index_first_axis", "pad_input", "rearrange", "unpad_input"}
+
+
+def _is_flash_fallback_tail_line(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return True
+    if stripped in {"_FLASH_ATTN_AVAILABLE = True", "except ImportError:", "_FLASH_ATTN_AVAILABLE = False"}:
+        return True
+    return any(stripped == f"{name} = None" for name in FLASH_FALLBACK_NAMES)
+
+
+def normalize_flash_import_block(text: str) -> tuple[str, bool]:
+    """Replace original or previously broken flash-attn fallback blocks.
+
+    Older versions of this script could leave `try:` followed by an unindented
+    `from flash_attn...` line. Do not rely on exact string matching here; repair
+    any block whose current or next line contains the flash-attn import.
+    """
+
+    lines = text.splitlines()
+    out: list[str] = []
+    changed = False
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        next_line = lines[i + 1] if i + 1 < len(lines) else ""
+
+        if stripped == "try:" and IMPORT_LINE in next_line:
+            out.extend(PATCHED_IMPORT.splitlines())
+            i += 2
+            while i < len(lines) and _is_flash_fallback_tail_line(lines[i]):
+                i += 1
+            changed = True
+            continue
+
+        if IMPORT_LINE in line:
+            out.extend(PATCHED_IMPORT.splitlines())
+            i += 1
+            while i < len(lines) and _is_flash_fallback_tail_line(lines[i]):
+                i += 1
+            changed = True
+            continue
+
+        out.append(line)
+        i += 1
+
+    normalized = "\n".join(out)
+    if text.endswith("\n"):
+        normalized += "\n"
+    return normalized, changed
 
 
 def patch_text(text: str) -> tuple[str, bool]:
     changed = False
+    text, import_changed = normalize_flash_import_block(text)
+    changed = changed or import_changed
+
+    # Kept for backward compatibility with exact bad files from early debug
+    # sessions. The line-wise normalizer above should normally catch this.
     if BROKEN_PATCHED_IMPORT in text:
         text = text.replace(BROKEN_PATCHED_IMPORT, PATCHED_IMPORT, 1)
-        changed = True
-
-    if "try:\nfrom flash_attn.bert_padding import" in text:
-        text = text.replace("try:\nfrom flash_attn.bert_padding import", "try:\n    from flash_attn.bert_padding import", 1)
-        changed = True
-
-    if "_FLASH_ATTN_AVAILABLE" not in text and IMPORT_LINE in text:
-        text = text.replace(IMPORT_LINE, PATCHED_IMPORT, 1)
         changed = True
 
     if "_FLASH_ATTN_AVAILABLE" not in text:
