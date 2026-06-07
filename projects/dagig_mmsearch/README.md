@@ -236,3 +236,56 @@ SerpAPI is not needed for this stage. Add SerpAPI only after local non-leaky BM2
 1. local non-leaky BM25 over dataset/context/Wikipedia-like documents
 2. image index with CLIP/SigLIP embeddings
 3. optional SerpAPI or other web search as an external tool baseline
+
+## Offline DAG-IG Relabel Gate
+
+Do not tune proxy rewards before checking whether the data contains delayed-credit structure. The offline relabel gate builds teacher dependency trajectories:
+
+```text
+image_search -> text_search -> stop
+```
+
+Step-0 image observations are redacted by default so they cannot directly leak the gold answer. A trajectory is selected only when the future-action IG edge `image_search -> text_search` is active, the next text-search step has positive local utility, and the step-0 observation does not contain the answer.
+
+Run a cheap lexical smoke first:
+
+```bash
+DAGIG_RELABEL_LIMIT=32 \
+DAGIG_RELABEL_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_RELABEL_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_RELABEL_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+make offline_dependency_relabel
+```
+
+Outputs:
+
+```text
+results/dagig_offline/dependency_relabel.jsonl
+results/dagig_offline/dependency_relabel_selected.jsonl
+paper_artifacts/tables/offline_dependency_edges.csv
+paper_artifacts/tables/offline_dependency_edges_selected.csv
+paper_artifacts/tables/offline_dependency_summary.csv
+```
+
+On A800, use the frozen Qwen reference policy:
+
+```bash
+DAGIG_RELABEL_USE_REFERENCE=1 \
+DAGIG_RELABEL_LIMIT=128 \
+DAGIG_RELABEL_CF_SAMPLES=2 \
+DAGIG_RELABEL_SAMPLES_JSONL=data/processed/fvqa_train_small.jsonl \
+DAGIG_RELABEL_TEXT_INDEX=data/indexes/fvqa_train_text_corpus.jsonl \
+DAGIG_RELABEL_IMAGE_INDEX=data/indexes/fvqa_train_image_corpus.jsonl \
+make offline_dependency_relabel
+```
+
+Interpretation:
+
+```text
+selected_rate > 0 means the dataset has usable delayed-credit trajectories.
+answer_leak_step0_rate should stay near 0.
+selected_d01_future_action_ig_mean should be positive.
+selected_r0_minus_g0_mean should be positive if DAG-IG gives extra early-action credit.
+```
+
+If `selected_rate` is near zero, the data/trajectory design is wrong; do not start RL. Move to datasets or prompts that force crop/OCR/select/search chains.

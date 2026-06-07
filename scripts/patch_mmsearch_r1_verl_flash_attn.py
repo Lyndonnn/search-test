@@ -92,17 +92,32 @@ def normalize_flash_import_block(text: str) -> tuple[str, bool]:
         next_line = lines[i + 1] if i + 1 < len(lines) else ""
 
         if stripped == "try:" and IMPORT_LINE in next_line:
-            out.extend(make_patched_import(infer_block_indent(line, out)))
-            i += 2
-            while i < len(lines) and _is_flash_fallback_tail_line(lines[i]):
-                i += 1
-            changed = True
+            indent = infer_block_indent(line, out)
+            expected = make_patched_import(indent)
+            current_block = lines[i : i + len(expected)]
+            if current_block == expected:
+                out.extend(expected)
+                i += len(expected)
+            else:
+                out.extend(expected)
+                i += 2
+                while i < len(lines) and _is_flash_fallback_tail_line(lines[i]):
+                    if lines[i].strip() == "_FLASH_ATTN_AVAILABLE = False":
+                        i += 1
+                        break
+                    i += 1
+                changed = True
             continue
 
         if IMPORT_LINE in line:
-            out.extend(make_patched_import(infer_block_indent(line, out)))
+            indent = infer_block_indent(line, out)
+            expected = make_patched_import(indent)
+            out.extend(expected)
             i += 1
             while i < len(lines) and _is_flash_fallback_tail_line(lines[i]):
+                if lines[i].strip() == "_FLASH_ATTN_AVAILABLE = False":
+                    i += 1
+                    break
                 i += 1
             changed = True
             continue
