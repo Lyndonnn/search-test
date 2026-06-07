@@ -73,14 +73,19 @@ if [[ -z "${VLLM_GPU_MEMORY_UTILIZATION:-}" ]]; then
     VLLM_GPU_MEMORY_UTILIZATION="0.30"
   fi
 fi
-TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-1}"
+TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-$N_GPUS}"
 ROLLOUT_N="${ROLLOUT_N:-2}"
 PPO_MINI_BATCH_SIZE="${PPO_MINI_BATCH_SIZE:-1}"
+if (( TRAIN_BATCH_SIZE % N_GPUS != 0 )); then
+  echo "TRAIN_BATCH_SIZE=$TRAIN_BATCH_SIZE must be divisible by N_GPUS=$N_GPUS before rollout generation."
+  echo "Set TRAIN_BATCH_SIZE=$N_GPUS or another multiple of $N_GPUS."
+  exit 1
+fi
 REAL_TRAIN_BATCH_SIZE=$((TRAIN_BATCH_SIZE * ROLLOUT_N))
 if (( REAL_TRAIN_BATCH_SIZE % N_GPUS != 0 )); then
   echo "TRAIN_BATCH_SIZE * ROLLOUT_N must be divisible by N_GPUS for veRL GRPO."
   echo "Got TRAIN_BATCH_SIZE=$TRAIN_BATCH_SIZE ROLLOUT_N=$ROLLOUT_N N_GPUS=$N_GPUS real_train_batch_size=$REAL_TRAIN_BATCH_SIZE"
-  echo "Set TRAIN_BATCH_SIZE=$N_GPUS ROLLOUT_N=1, or keep TRAIN_BATCH_SIZE=1 ROLLOUT_N=$N_GPUS."
+  echo "Set TRAIN_BATCH_SIZE=$N_GPUS ROLLOUT_N=1, or another pair divisible by $N_GPUS."
   exit 1
 fi
 
