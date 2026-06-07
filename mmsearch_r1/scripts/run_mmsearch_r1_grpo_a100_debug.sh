@@ -36,10 +36,48 @@ fi
 TRAIN_DATA_PATH="${TRAIN_DATA_PATH:-mmsearch_r1/data/fvqa_debug_train.pq}"
 VAL_DATA_PATH="${VAL_DATA_PATH:-mmsearch_r1/data/fvqa_debug_val.pq}"
 MODEL_PATH="${MMSEARCH_MODEL_PATH:-Qwen/Qwen2.5-VL-3B-Instruct}"
-N_GPUS="${N_GPUS:-1}"
+detect_visible_gpus() {
+  if [[ -n "${CUDA_VISIBLE_DEVICES:-}" && "${CUDA_VISIBLE_DEVICES}" != "-1" ]]; then
+    python3 - <<'PY'
+import os
+visible = [x for x in os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",") if x.strip()]
+print(max(len(visible), 1))
+PY
+    return
+  fi
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    local count
+    count="$(nvidia-smi -L 2>/dev/null | wc -l | tr -d ' ')"
+    if [[ -n "$count" && "$count" -gt 0 ]]; then
+      echo "$count"
+      return
+    fi
+  fi
+  echo 1
+}
+
+N_GPUS="${N_GPUS:-$(detect_visible_gpus)}"
+VLLM_TENSOR_PARALLEL_SIZE="${VLLM_TENSOR_PARALLEL_SIZE:-$N_GPUS}"
+if (( VLLM_TENSOR_PARALLEL_SIZE < 1 || VLLM_TENSOR_PARALLEL_SIZE > N_GPUS )); then
+  echo "Invalid VLLM_TENSOR_PARALLEL_SIZE=$VLLM_TENSOR_PARALLEL_SIZE for N_GPUS=$N_GPUS"
+  exit 1
+fi
+if (( N_GPUS % VLLM_TENSOR_PARALLEL_SIZE != 0 )); then
+  echo "N_GPUS=$N_GPUS must be divisible by VLLM_TENSOR_PARALLEL_SIZE=$VLLM_TENSOR_PARALLEL_SIZE"
+  exit 1
+fi
+if [[ -z "${VLLM_GPU_MEMORY_UTILIZATION:-}" ]]; then
+  if (( VLLM_TENSOR_PARALLEL_SIZE >= 2 )); then
+    VLLM_GPU_MEMORY_UTILIZATION="0.45"
+  else
+    VLLM_GPU_MEMORY_UTILIZATION="0.30"
+  fi
+fi
 TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-1}"
 ROLLOUT_N="${ROLLOUT_N:-2}"
 PPO_MINI_BATCH_SIZE="${PPO_MINI_BATCH_SIZE:-1}"
+
+echo "MMSearch-R1 GRPO debug GPUs: N_GPUS=$N_GPUS VLLM_TENSOR_PARALLEL_SIZE=$VLLM_TENSOR_PARALLEL_SIZE VLLM_GPU_MEMORY_UTILIZATION=$VLLM_GPU_MEMORY_UTILIZATION"
 
 if [[ ! -f "$TRAIN_DATA_PATH" || ! -f "$VAL_DATA_PATH" ]]; then
   echo "Missing FVQA parquet. Run: make mmsearch_prepare_fvqa_debug"
@@ -80,8 +118,8 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   actor_rollout_ref.actor.fsdp_config.param_offload=False \
   actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
   actor_rollout_ref.rollout.name=vllm_multiturn_mmsearch \
-  actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
-  actor_rollout_ref.rollout.gpu_memory_utilization="${VLLM_GPU_MEMORY_UTILIZATION:-0.30}" \
+  actor_rollout_ref.rollout.tensor_model_parallel_size="$VLLM_TENSOR_PARALLEL_SIZE" \
+  actor_rollout_ref.rollout.gpu_memory_utilization="$VLLM_GPU_MEMORY_UTILIZATION" \
   actor_rollout_ref.rollout.enable_chunked_prefill=False \
   actor_rollout_ref.rollout.enforce_eager="${VLLM_ENFORCE_EAGER:-True}" \
   actor_rollout_ref.rollout.free_cache_engine=False \

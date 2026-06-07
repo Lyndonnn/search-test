@@ -29,6 +29,18 @@ WANDB_PROJECT_NAME="${WANDB_PROJECT_NAME:-mmsearch_r1}"
 WANDB_EXP_NAME="${WANDB_EXP_NAME:-mmsearch_r1_grpo}"
 MODEL_PATH="${MMSEARCH_MODEL_PATH:-Qwen/Qwen2.5-VL-7B-Instruct}"
 N_GPUS="${N_GPUS:-8}"
+VLLM_TENSOR_PARALLEL_SIZE="${VLLM_TENSOR_PARALLEL_SIZE:-1}"
+
+if (( VLLM_TENSOR_PARALLEL_SIZE < 1 || VLLM_TENSOR_PARALLEL_SIZE > N_GPUS )); then
+    echo "Invalid VLLM_TENSOR_PARALLEL_SIZE=$VLLM_TENSOR_PARALLEL_SIZE for N_GPUS=$N_GPUS"
+    exit 1
+fi
+if (( N_GPUS % VLLM_TENSOR_PARALLEL_SIZE != 0 )); then
+    echo "N_GPUS=$N_GPUS must be divisible by VLLM_TENSOR_PARALLEL_SIZE=$VLLM_TENSOR_PARALLEL_SIZE"
+    exit 1
+fi
+
+echo "MMSearch-R1 GRPO GPUs: N_GPUS=$N_GPUS VLLM_TENSOR_PARALLEL_SIZE=$VLLM_TENSOR_PARALLEL_SIZE"
 
 if [[ -z "${SERPAPI_API_KEY:-}" && -z "${MMSEARCH_OFFLINE_PARQUET:-}" && -f "$TRAIN_DATA_PATH" ]]; then
     export MMSEARCH_OFFLINE_PARQUET="$TRAIN_DATA_PATH"
@@ -63,7 +75,7 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
     actor_rollout_ref.rollout.micro_batch_size_per_gpu=16 \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
+    actor_rollout_ref.rollout.tensor_model_parallel_size=$VLLM_TENSOR_PARALLEL_SIZE \
     actor_rollout_ref.rollout.name=vllm_multiturn_mmsearch \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
