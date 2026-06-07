@@ -5,18 +5,19 @@ from verl import DataProto
 
 from mmsearch_r1.workers.multimodal.reward.answer_utils import normalize_answer_list
 from mmsearch_r1.utils.reward_score_mm import _default_compute_score
+from mmsearch_r1.utils.reward_score_mm.mmsearch_r1_score import extract_solution, normalize_answer
 
 
 TEXT_SEARCH_RE = re.compile(r"<text_search>.*?</text_search>", re.DOTALL)
 IMAGE_SEARCH_TEXT = "<search><img></search>"
 
 
-def find_subsequence(haystack: list[int], needle: list[int]) -> int:
+def find_subsequence(haystack: list[int], needle: list[int], start_at: int = 0) -> int:
     if not needle or len(needle) > len(haystack):
         return -1
     first = needle[0]
     max_start = len(haystack) - len(needle)
-    for start in range(max_start + 1):
+    for start in range(max(start_at, 0), max_start + 1):
         if haystack[start] != first:
             continue
         if haystack[start : start + len(needle)] == needle:
@@ -56,6 +57,7 @@ class MMSearchR1_RewardManager:
 
     def search_action_spans(self, valid_response_ids: list[int], decoded_responses: list[str]) -> list[tuple[int, int, str]]:
         spans = []
+        used_starts = set()
         for response in decoded_responses:
             action_texts = []
             action_texts.extend(match.group(0) for match in TEXT_SEARCH_RE.finditer(response))
@@ -64,8 +66,13 @@ class MMSearchR1_RewardManager:
 
             for action_text in action_texts:
                 action_ids = self.tokenizer.encode(action_text, add_special_tokens=False)
-                start = find_subsequence(valid_response_ids, action_ids)
+                start_at = 0
+                start = find_subsequence(valid_response_ids, action_ids, start_at=start_at)
+                while start in used_starts:
+                    start_at = start + 1
+                    start = find_subsequence(valid_response_ids, action_ids, start_at=start_at)
                 if start >= 0:
+                    used_starts.add(start)
                     tool_type = "image_search" if action_text == IMAGE_SEARCH_TEXT else "text_search"
                     spans.append((start, start + len(action_ids), tool_type))
         return spans
@@ -78,6 +85,8 @@ class MMSearchR1_RewardManager:
         decoded_responses: list[str],
         score: float,
         extra_info,
+        ground_truth: list[str] | None = None,
+        full_response_text: str = "",
     ) -> None:
         if not extra_info:
             return
@@ -90,8 +99,12 @@ class MMSearchR1_RewardManager:
             return
 
         correct_threshold = float(extra_info.get("format_penalty", 0.1) or 0.1) + 1e-4
-        if bool(extra_info.get("search_action_bonus_correct_only", True)) and score <= correct_threshold:
-            return
+        if mode == "search_success_shaping":
+            if bool(extra_info.get("search_action_bonus_correct_only", True)) and score <= correct_threshold:
+                return
+        elif mode == "dagig_lite_proxy":
+            if not self.has_dagig_proxy_support(decoded_responses, full_response_text, ground_truth or []):
+                return
 
         spans = self.search_action_spans(valid_response_ids, decoded_responses)
         if not spans:
@@ -100,6 +113,32 @@ class MMSearchR1_RewardManager:
         for start, end, _tool_type in spans:
             length = max(end - start, 1)
             reward_tensor[row_idx, start:end] += bonus / length
+
+    @staticmethod
+    def has_dagig_proxy_support(decoded_responses: list[str], full_response_text: str, ground_truth: list[str]) -> bool:
+        """Cheap DAG-IG proxy for debug runs.
+
+        A search action is eligible when the later final answer or returned
+        observation text contains a gold answer substring. This approximates
+        "the search observation enabled a useful later answer" without running
+        frozen-model counterfactual logprob inside the hot RL loop.
+        """
+
+        if not ground_truth:
+            return False
+        final_answer = ""
+        if decoded_responses:
+            final_answer = extract_solution(decoded_responses[-1]) or ""
+
+        normalized_answer = normalize_answer(final_answer)
+        normalized_context = normalize_answer(full_response_text)
+        for gold in ground_truth:
+            normalized_gold = normalize_answer(gold)
+            if len(normalized_gold) < 3:
+                continue
+            if normalized_gold in normalized_answer or normalized_gold in normalized_context:
+                return True
+        return False
 
     def __call__(self, data: DataProto):
         """We will expand this function gradually based on the available datasets"""
@@ -126,6 +165,7 @@ class MMSearchR1_RewardManager:
             response_ids = data_item.batch['responses']
             valid_response_length = data_item.batch['attention_mask'][prompt_length:].sum()
             valid_response_ids = response_ids[:valid_response_length]
+            full_response_text = self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
 
             # decode
             prompt_str = self.tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
@@ -163,6 +203,8 @@ class MMSearchR1_RewardManager:
                 response_str,
                 score,
                 extra_info,
+                ground_truth,
+                full_response_text,
             )
 
             if data_source not in already_print_data_sources:
