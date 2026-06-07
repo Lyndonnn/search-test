@@ -89,6 +89,27 @@ def _write_validation_metrics(config, step, metrics, label):
             json.dump(row, f, ensure_ascii=False, indent=2, sort_keys=True)
 
 
+def _answer_only_eval_batch(batch: DataProto) -> DataProto:
+    """Create a validation batch whose reward ignores training-time shaping.
+
+    Main validation accuracy must measure final-answer quality, not whether a
+    process bonus pushed summed reward above the correctness threshold.
+    """
+
+    non_tensor_batch = {key: val.copy() for key, val in batch.non_tensor_batch.items()}
+    default_infos = np.array([{} for _ in range(len(batch))], dtype=object)
+    extra_infos = []
+    for info in non_tensor_batch.get('extra_info', default_infos):
+        copied = dict(info)
+        copied['reward_shaping_mode'] = 'outcome_only'
+        copied['search_action_bonus'] = 0.0
+        copied['search_action_bonus_correct_only'] = True
+        copied['dagig_proxy_require_correct'] = True
+        extra_infos.append(copied)
+    non_tensor_batch['extra_info'] = np.array(extra_infos, dtype=object)
+    return DataProto(batch=batch.batch, non_tensor_batch=non_tensor_batch, meta_info=deepcopy(batch.meta_info))
+
+
 def _compute_response_info(batch):
     response_length = batch.batch['responses'].shape[-1]
 
@@ -627,6 +648,7 @@ class RayPPOTrainer:
         )
 
         reward_tensor_lst = []
+        shaped_reward_tensor_lst = []
         data_source_lst = []
 
         # Lists to collect samples for the table
@@ -718,14 +740,18 @@ class RayPPOTrainer:
                         'use_search_count_penalty'
                     ] = use_search_count_penalty
             test_batch.non_tensor_batch['extra_info'] = np.array(test_batch.non_tensor_batch['extra_info'])
-            reward_tensor = self.val_reward_fn(test_batch)
+            shaped_reward_tensor = self.val_reward_fn(test_batch)
+            answer_reward_tensor = self.val_reward_fn(_answer_only_eval_batch(test_batch))
 
             # Store scores
-            scores = reward_tensor.sum(-1).cpu().tolist()
+            scores = answer_reward_tensor.sum(-1).cpu().tolist()
             sample_scores.extend(scores)
 
-            reward_tensor_lst.append(reward_tensor)
-            data_source_lst.append(test_batch.non_tensor_batch.get('data_source', ['unknown'] * reward_tensor.shape[0]))
+            reward_tensor_lst.append(answer_reward_tensor)
+            shaped_reward_tensor_lst.append(shaped_reward_tensor)
+            data_source_lst.append(
+                test_batch.non_tensor_batch.get('data_source', ['unknown'] * answer_reward_tensor.shape[0])
+            )
 
         self._maybe_log_val_generations_to_wandb(
             inputs=sample_inputs,
@@ -736,15 +762,19 @@ class RayPPOTrainer:
         )
 
         reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (batch_size,)
+        shaped_reward_tensor = torch.cat(shaped_reward_tensor_lst, dim=0).sum(-1).cpu()  # (batch_size,)
         data_sources = np.concatenate(data_source_lst, axis=0)
 
         # evaluate test_score based on data source
         data_source_reward = {}
+        data_source_shaped_reward = {}
         for i in range(reward_tensor.shape[0]):
             data_source = data_sources[i]
             if data_source not in data_source_reward:
                 data_source_reward[data_source] = []
+                data_source_shaped_reward[data_source] = []
             data_source_reward[data_source].append(reward_tensor[i].item())
+            data_source_shaped_reward[data_source].append(shaped_reward_tensor[i].item())
 
         metric_dict = {}
         for data_source, rewards in data_source_reward.items():
@@ -755,6 +785,12 @@ class RayPPOTrainer:
             correct_threshold = fp + 1e-4
             correct_cnt = sum(1 for x in rewards if x > correct_threshold)
             metric_dict[f'val/{data_source}/score'] = correct_cnt / len(rewards)
+            shaped_rewards = data_source_shaped_reward[data_source]
+            metric_dict[f'val/{data_source}/answer_reward'] = np.mean(rewards)
+            metric_dict[f'val/{data_source}/answer_score'] = correct_cnt / len(rewards)
+            metric_dict[f'val/{data_source}/shaped_reward'] = np.mean(shaped_rewards)
+            shaped_correct_cnt = sum(1 for x in shaped_rewards if x > correct_threshold)
+            metric_dict[f'val/{data_source}/shaped_score'] = shaped_correct_cnt / len(shaped_rewards)
             search_cnt_text_total, search_cnt_image_total = 0, 0
             search_cnt_text, search_cnt_image, search_cnt_mix = 0, 0, 0
             search_fail_text, search_fail_image = 0, 0

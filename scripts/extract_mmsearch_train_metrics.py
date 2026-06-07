@@ -61,6 +61,10 @@ def add_stable_aliases(metrics: dict[str, Any]) -> dict[str, Any]:
     # Stable aliases used by paper table scripts.
     val_score_keys = [k for k in metrics if k.startswith("val/") and k.endswith("/score")]
     val_reward_keys = [k for k in metrics if k.startswith("val/") and k.endswith("/reward")]
+    answer_score_keys = [k for k in metrics if k.startswith("val/") and k.endswith("/answer_score")]
+    answer_reward_keys = [k for k in metrics if k.startswith("val/") and k.endswith("/answer_reward")]
+    shaped_score_keys = [k for k in metrics if k.startswith("val/") and k.endswith("/shaped_score")]
+    shaped_reward_keys = [k for k in metrics if k.startswith("val/") and k.endswith("/shaped_reward")]
     text_keys = [k for k in metrics if k.startswith("val/") and k.endswith("/search_ratio_text")]
     image_keys = [k for k in metrics if k.startswith("val/") and k.endswith("/search_ratio_image")]
     mix_keys = [k for k in metrics if k.startswith("val/") and k.endswith("/search_ratio_mix")]
@@ -71,6 +75,14 @@ def add_stable_aliases(metrics: dict[str, Any]) -> dict[str, Any]:
         metrics["val_score"] = metrics[val_score_keys[0]]
     if val_reward_keys:
         metrics["val_reward"] = metrics[val_reward_keys[0]]
+    if answer_score_keys:
+        metrics["val_answer_score"] = metrics[answer_score_keys[0]]
+    if answer_reward_keys:
+        metrics["val_answer_reward"] = metrics[answer_reward_keys[0]]
+    if shaped_score_keys:
+        metrics["val_shaped_score"] = metrics[shaped_score_keys[0]]
+    if shaped_reward_keys:
+        metrics["val_shaped_reward"] = metrics[shaped_reward_keys[0]]
     if text_keys:
         metrics["val_search_ratio_text"] = metrics[text_keys[0]]
     if image_keys:
