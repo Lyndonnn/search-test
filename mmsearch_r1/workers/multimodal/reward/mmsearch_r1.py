@@ -5,7 +5,13 @@ from verl import DataProto
 
 from mmsearch_r1.workers.multimodal.reward.answer_utils import normalize_answer_list
 from mmsearch_r1.utils.reward_score_mm import _default_compute_score
-from mmsearch_r1.utils.reward_score_mm.mmsearch_r1_score import normalize_answer
+from mmsearch_r1.utils.reward_score_mm.mmsearch_r1_score import (
+    em_check,
+    extract_solution,
+    format_reward,
+    normalize_answer,
+    subem_check,
+)
 from mmsearch_r1.utils.dagig_offline import dagig_edge_for_extra_info, edge_tool_type, edge_weight
 
 
@@ -41,6 +47,7 @@ class MMSearchR1_RewardManager:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score or _default_compute_score
+        self.last_diagnostics = {}
 
     def extract_responses_list(
         self,
@@ -96,47 +103,139 @@ class MMSearchR1_RewardManager:
         extra_info,
         ground_truth: list[str] | None = None,
         observation_text: str = "",
-    ) -> None:
+    ) -> dict:
+        spans = self.search_action_spans(valid_response_ids, decoded_responses)
+        tool_types = {tool_type for _start, _end, tool_type in spans}
+        diagnostics = {
+            "mode": extra_info.get("reward_shaping_mode", "outcome_only") if extra_info else "outcome_only",
+            "raw_answer_reward": self.raw_answer_reward(decoded_responses, ground_truth or [], extra_info),
+            "final_reward_before_shaping": float(score),
+            "final_reward_after_shaping": float(score),
+            "bonus_total": 0.0,
+            "bonus_applied": False,
+            "bonus_token_count": 0,
+            "valid_tool_call": bool(spans),
+            "image_search_action": "image_search" in tool_types,
+            "text_search_action": "text_search" in tool_types,
+            "search_fail": self.has_search_failure(observation_text),
+            "effective_search": bool(spans) and self.has_dagig_proxy_support(observation_text, ground_truth or []),
+            "invalid_action": self.invalid_action(decoded_responses),
+            "dagig_edge_loaded": False,
+            "selected_edge_hit": False,
+            "required_tool_type": "",
+        }
         if not extra_info:
-            return
+            return diagnostics
         mode = extra_info.get("reward_shaping_mode", "outcome_only")
         if mode not in {"search_success_shaping", "dagig_lite_proxy", "dagig_offline"}:
-            return
+            return diagnostics
 
         if mode == "dagig_offline":
             bonus = float(extra_info.get("dagig_offline_search_bonus", 0.0) or 0.0)
         else:
             bonus = float(extra_info.get("search_action_bonus", 0.0) or 0.0)
         if bonus <= 0:
-            return
+            return diagnostics
 
         correct_threshold = float(extra_info.get("format_penalty", 0.1) or 0.1) + 1e-4
         if mode == "search_success_shaping":
             if as_bool(extra_info.get("search_action_bonus_correct_only", True)) and score <= correct_threshold:
-                return
+                return diagnostics
         elif mode == "dagig_lite_proxy":
             if as_bool(extra_info.get("dagig_proxy_require_correct", True)) and score <= correct_threshold:
-                return
+                return diagnostics
             if not self.has_dagig_proxy_support(observation_text, ground_truth or []):
-                return
+                return diagnostics
         elif mode == "dagig_offline":
             if as_bool(extra_info.get("dagig_offline_correct_only", False)) and score <= correct_threshold:
-                return
+                return diagnostics
             edge = dagig_edge_for_extra_info(extra_info, str(extra_info.get("dagig_offline_relabel_path", "")))
             if not edge:
-                return
+                return diagnostics
+            diagnostics["dagig_edge_loaded"] = True
             required_tool_type = str(extra_info.get("dagig_offline_bonus_tool") or edge_tool_type(edge))
+            diagnostics["required_tool_type"] = required_tool_type
             bonus *= edge_weight(edge, str(extra_info.get("dagig_offline_weight_key", "constant")))
 
-        spans = self.search_action_spans(valid_response_ids, decoded_responses)
         if not spans:
-            return
+            return diagnostics
 
+        bonus_total = 0.0
+        bonus_token_count = 0
         for start, end, tool_type in spans:
             if mode == "dagig_offline" and required_tool_type and tool_type != required_tool_type:
                 continue
+            if mode == "dagig_offline":
+                diagnostics["selected_edge_hit"] = True
             length = max(end - start, 1)
-            reward_tensor[row_idx, start:end] += bonus / length
+            token_bonus = bonus / length
+            reward_tensor[row_idx, start:end] += token_bonus
+            bonus_total += float(bonus)
+            bonus_token_count += length
+        diagnostics["bonus_total"] = bonus_total
+        diagnostics["bonus_token_count"] = bonus_token_count
+        diagnostics["bonus_applied"] = bonus_total > 0
+        diagnostics["final_reward_after_shaping"] = float(score) + bonus_total
+        return diagnostics
+
+    @staticmethod
+    def raw_answer_reward(decoded_responses: list[str], ground_truth: list[str], extra_info=None) -> float:
+        if not decoded_responses:
+            return 0.0
+        answer = extract_solution(decoded_responses[-1])
+        if answer is None:
+            return 0.0
+        reward_mode = "EM"
+        if extra_info is not None:
+            reward_mode = extra_info.get("reward_mode", "EM")
+        if reward_mode == "SubEM":
+            return float(subem_check(answer, ground_truth))
+        return float(em_check(answer, ground_truth))
+
+    @staticmethod
+    def invalid_action(decoded_responses: list[str]) -> bool:
+        try:
+            fmt, _search_count = format_reward(decoded_responses)
+        except Exception:
+            return True
+        return fmt < 1
+
+    @staticmethod
+    def has_search_failure(observation_text: str) -> bool:
+        return (
+            "[Text Search Results] There is an error" in observation_text
+            or "[Image Search Results] There is an error" in observation_text
+        )
+
+    @staticmethod
+    def summarize_diagnostics(rows: list[dict]) -> dict:
+        if not rows:
+            return {}
+
+        def mean(key: str) -> float:
+            return sum(float(row.get(key, 0.0)) for row in rows) / max(1, len(rows))
+
+        bonus_values = [float(row.get("bonus_total", 0.0)) for row in rows]
+        bonus_mean = sum(bonus_values) / max(1, len(bonus_values))
+        bonus_var = sum((value - bonus_mean) ** 2 for value in bonus_values) / max(1, len(bonus_values))
+        return {
+            "reward_diag/num_samples": len(rows),
+            "reward_diag/bonus_applied_rate": mean("bonus_applied"),
+            "reward_diag/dagig_bonus_mean": bonus_mean,
+            "reward_diag/dagig_bonus_std": bonus_var**0.5,
+            "reward_diag/raw_answer_reward": mean("raw_answer_reward"),
+            "reward_diag/final_reward_before_shaping": mean("final_reward_before_shaping"),
+            "reward_diag/final_reward_after_shaping": mean("final_reward_after_shaping"),
+            "reward_diag/valid_tool_call_rate": mean("valid_tool_call"),
+            "reward_diag/image_search_ratio": mean("image_search_action"),
+            "reward_diag/text_search_ratio": mean("text_search_action"),
+            "reward_diag/search_fail_ratio": mean("search_fail"),
+            "reward_diag/effective_search_rate": mean("effective_search"),
+            "reward_diag/invalid_action_rate": mean("invalid_action"),
+            "reward_diag/avg_tool_calls": mean("image_search_action") + mean("text_search_action"),
+            "reward_diag/dagig_edge_loaded_rate": mean("dagig_edge_loaded"),
+            "reward_diag/selected_edge_hit_rate": mean("selected_edge_hit"),
+        }
 
     @staticmethod
     def has_dagig_proxy_support(observation_text: str, ground_truth: list[str]) -> bool:
@@ -170,6 +269,7 @@ class MMSearchR1_RewardManager:
 
         # shape: (B*R, response_length_total)
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
+        diagnostic_rows = []
 
         already_print_data_sources = {}
 
@@ -221,15 +321,17 @@ class MMSearchR1_RewardManager:
                 extra_info=extra_info,
             )
             reward_tensor[i, valid_response_length - 1] = score
-            self.apply_search_success_shaping(
-                reward_tensor,
-                i,
-                valid_response_ids.tolist(),
-                response_str,
-                score,
-                extra_info,
-                ground_truth,
-                observation_text,
+            diagnostic_rows.append(
+                self.apply_search_success_shaping(
+                    reward_tensor,
+                    i,
+                    valid_response_ids.tolist(),
+                    response_str,
+                    score,
+                    extra_info,
+                    ground_truth,
+                    observation_text,
+                )
             )
 
             if data_source not in already_print_data_sources:
@@ -242,4 +344,5 @@ class MMSearchR1_RewardManager:
                 print("[ground_truth]", ground_truth)
                 print("[score]", score)
 
+        self.last_diagnostics = self.summarize_diagnostics(diagnostic_rows)
         return reward_tensor

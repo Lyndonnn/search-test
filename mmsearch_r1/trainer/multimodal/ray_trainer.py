@@ -89,6 +89,38 @@ def _write_validation_metrics(config, step, metrics, label):
             json.dump(row, f, ensure_ascii=False, indent=2, sort_keys=True)
 
 
+def _prefix_reward_diagnostics(diagnostics, prefix):
+    if not diagnostics:
+        return {}
+    out = {}
+    for key, value in diagnostics.items():
+        clean_key = key.split("/", 1)[1] if key.startswith("reward_diag/") else key
+        out[f"{prefix}/reward_diag_{clean_key}"] = _jsonable_metric_value(value)
+    return out
+
+
+def _merge_reward_diagnostics(diagnostics_list, prefix):
+    diagnostics_list = [diag for diag in diagnostics_list if diag]
+    if not diagnostics_list:
+        return {}
+    total = sum(float(diag.get("reward_diag/num_samples", 0.0)) for diag in diagnostics_list)
+    if total <= 0:
+        total = float(len(diagnostics_list))
+
+    merged = {}
+    keys = sorted({key for diag in diagnostics_list for key in diag.keys()})
+    for key in keys:
+        if key == "reward_diag/num_samples":
+            merged[key] = total
+            continue
+        numerator = 0.0
+        for diag in diagnostics_list:
+            weight = float(diag.get("reward_diag/num_samples", 1.0))
+            numerator += float(diag.get(key, 0.0)) * weight
+        merged[key] = numerator / total
+    return _prefix_reward_diagnostics(merged, prefix)
+
+
 def _answer_only_eval_batch(batch: DataProto) -> DataProto:
     """Create a validation batch whose reward ignores training-time shaping.
 
@@ -650,6 +682,7 @@ class RayPPOTrainer:
         reward_tensor_lst = []
         shaped_reward_tensor_lst = []
         data_source_lst = []
+        shaped_reward_diagnostics_lst = []
 
         # Lists to collect samples for the table
         sample_inputs = []
@@ -777,6 +810,7 @@ class RayPPOTrainer:
                     ] = self.config.trainer.dagig_offline_weight_key
             test_batch.non_tensor_batch['extra_info'] = np.array(test_batch.non_tensor_batch['extra_info'])
             shaped_reward_tensor = self.val_reward_fn(test_batch)
+            shaped_reward_diagnostics_lst.append(deepcopy(getattr(self.val_reward_fn, "last_diagnostics", {})))
             answer_reward_tensor = self.val_reward_fn(_answer_only_eval_batch(test_batch))
 
             # Store scores
@@ -876,6 +910,8 @@ class RayPPOTrainer:
             metric_dict[f'val/{data_source}/responses_after_first_user_prompt_len'] = len(
                 responses_after_first_user_prompt
             )
+
+        metric_dict.update(_merge_reward_diagnostics(shaped_reward_diagnostics_lst, "val"))
 
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [Global Step: {self.global_steps}] Validate Ends ...")
 
@@ -1261,6 +1297,12 @@ class RayPPOTrainer:
                             f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [Global Step: {self.global_steps}] Reward_fn Starts ..."
                         )
                         reward_tensor = self.reward_fn(new_batch)
+                        metrics.update(
+                            _prefix_reward_diagnostics(
+                                getattr(self.reward_fn, "last_diagnostics", {}),
+                                "train",
+                            )
+                        )
                         print(
                             f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [Global Step: {self.global_steps}] Reward_fn Ends ..."
                         )

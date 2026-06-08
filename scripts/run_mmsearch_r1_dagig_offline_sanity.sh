@@ -15,7 +15,7 @@ SAVE_FREQ="${SAVE_FREQ:--1}"
 BONUS="${DAGIG_OFFLINE_SEARCH_BONUS:-0.2}"
 RELABEL_PATH="${DAGIG_OFFLINE_RELABEL_PATH:-results/dagig_offline/dependency_relabel_selected.jsonl}"
 RESULT_ROOT="${DAGIG_DATA_ROOT:-$ROOT/data/cache/dagig_local}/results_keep/mmsearch_mainline"
-LOG_DIR="$RESULT_ROOT/logs/dagig_offline_${STEPS}step"
+PROMPT_TAG="normal"
 PROMPT_PATH="${USER_PROMPT_ROUND_1:-}"
 
 if [[ ! -s "$RELABEL_PATH" ]]; then
@@ -25,22 +25,25 @@ if [[ ! -s "$RELABEL_PATH" ]]; then
   exit 1
 fi
 
-mkdir -p "$RESULT_ROOT" "$LOG_DIR"
+mkdir -p "$RESULT_ROOT"
 
 if [[ "${DAGIG_USE_SEARCH_REQUIRED_PROMPT:-1}" == "1" && -z "$PROMPT_PATH" ]]; then
+  PROMPT_TAG="search_required"
   PROMPT_PATH="mmsearch_r1/prompts/round_1_user_prompt_qwenvl_search_required.pkl"
   python3 scripts/create_mmsearch_search_required_prompts.py --output "$PROMPT_PATH"
 fi
+LOG_DIR="$RESULT_ROOT/logs/dagig_offline_${PROMPT_TAG}_${STEPS}step"
+mkdir -p "$LOG_DIR"
 
 echo "Running MMSearch-R1 DAG-IG offline shaping sanity run"
 echo "  purpose=MMSearch-R1 GRPO with offline DAG-IG selected-edge action credit"
 echo "  steps=$STEPS test_freq=$TEST_FREQ save_freq=$SAVE_FREQ bonus=$BONUS"
 echo "  relabel_path=$RELABEL_PATH"
-echo "  prompt=${PROMPT_PATH:-<default-mmsearch-r1>}"
+echo "  prompt=$PROMPT_TAG path=${PROMPT_PATH:-<default-mmsearch-r1>}"
 echo "  log_dir=$LOG_DIR"
 
 env_args=(
-  WANDB_EXP_NAME="dagig_offline_${STEPS}step"
+  WANDB_EXP_NAME="dagig_offline_${PROMPT_TAG}_${STEPS}step"
   TOTAL_TRAINING_STEPS="$STEPS"
   TEST_FREQ="$TEST_FREQ"
   SAVE_FREQ="$SAVE_FREQ"
@@ -62,8 +65,8 @@ env "${env_args[@]}" bash mmsearch_r1/scripts/run_mmsearch_r1_grpo_a100_debug.sh
 
 python3 scripts/extract_mmsearch_train_metrics.py \
   --input "$LOG_DIR/final_validation.json" \
-  --method "dagig_offline_${STEPS}step" \
-  --output-csv "$RESULT_ROOT/dagig_offline_${STEPS}step.csv" \
-  --output-json "$RESULT_ROOT/dagig_offline_${STEPS}step_metrics.json"
+  --method "dagig_offline_${PROMPT_TAG}_${STEPS}step" \
+  --output-csv "$RESULT_ROOT/dagig_offline_${PROMPT_TAG}_${STEPS}step.csv" \
+  --output-json "$RESULT_ROOT/dagig_offline_${PROMPT_TAG}_${STEPS}step_metrics.json"
 
-echo "wrote $RESULT_ROOT/dagig_offline_${STEPS}step.csv"
+echo "wrote $RESULT_ROOT/dagig_offline_${PROMPT_TAG}_${STEPS}step.csv"
