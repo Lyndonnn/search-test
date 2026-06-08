@@ -69,6 +69,7 @@ class MMSearchSearchNeedTest(unittest.TestCase):
         self.assertEqual(summary["search_harmful_n"], 1)
         self.assertEqual(summary["hard_n"], 1)
         self.assertEqual(summary["search_protocol_failed_n"], 1)
+        self.assertEqual(summary["malformed_search_attempt_n"], 0)
         self.assertEqual(groups["q_helpful.png"], "search_helpful")
         self.assertEqual(groups["q_failed.png"], "search_protocol_failed")
 
@@ -133,6 +134,30 @@ class MMSearchSearchNeedTest(unittest.TestCase):
         self.assertEqual(summary["correctness_mode"], "score")
         self.assertEqual(summary["search_helpful_n"], 1)
         self.assertEqual(samples[0]["group"], "search_helpful")
+
+    def test_malformed_search_attempt_is_diagnosed_separately(self):
+        direct_rows = [
+            row("q_bad_tool", "vegas", "wrong", 0.0, ["<reason>x</reason><answer>wrong</answer>"])
+        ]
+        search_rows = [
+            row("q_bad_tool", "vegas", "", 0.0, ["/search<img></search>"])
+        ]
+        summary, samples = build_diagnostic(
+            direct_rows=direct_rows,
+            search_rows=search_rows,
+            threshold=0.1001,
+            method="unit",
+            direct_path="direct.json",
+            search_path="search.json",
+        )
+
+        self.assertEqual(summary["search_call_rate"], 0.0)
+        self.assertEqual(summary["search_attempt_rate"], 1.0)
+        self.assertEqual(summary["malformed_search_attempt_rate"], 1.0)
+        self.assertEqual(summary["malformed_search_attempt_n"], 1)
+        self.assertEqual(samples[0]["group"], "malformed_search_attempt")
+        self.assertTrue(samples[0]["search_attempted_image"])
+        self.assertTrue(samples[0]["search_malformed_attempt"])
 
 
 if __name__ == "__main__":

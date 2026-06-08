@@ -79,6 +79,22 @@ def row_score(row: dict[str, Any]) -> float:
         return 0.0
 
 
+def has_image_search_attempt(responses: list[str]) -> bool:
+    if has_image_search(responses):
+        return True
+    for response in responses:
+        compact = "".join(str(response).lower().split())
+        if "search" in compact and "img" in compact:
+            return True
+    return False
+
+
+def has_text_search_attempt(responses: list[str]) -> bool:
+    if has_text_search(responses):
+        return True
+    return any("text_search" in str(response).lower() for response in responses)
+
+
 def row_info(row: dict[str, Any], threshold: float) -> dict[str, Any]:
     responses = as_response_list(row.get("output_text"))
     answers = row_answers(row)
@@ -90,6 +106,10 @@ def row_info(row: dict[str, Any], threshold: float) -> dict[str, Any]:
     fallback_prediction = prediction or response_text
     semantic_exact = exact_match(fallback_prediction, answers)
     semantic_substring = substring_match(fallback_prediction, answers)
+    valid_image_search = has_image_search(responses)
+    valid_text_search = has_text_search(responses)
+    image_attempt = has_image_search_attempt(responses)
+    text_attempt = has_text_search_attempt(responses)
     return {
         "score": score,
         "score_correct": score >= threshold,
@@ -102,8 +122,12 @@ def row_info(row: dict[str, Any], threshold: float) -> dict[str, Any]:
         "fallback_prediction": fallback_prediction,
         "responses": responses,
         "answers": answers,
-        "has_image_search": has_image_search(responses),
-        "has_text_search": has_text_search(responses),
+        "has_image_search": valid_image_search,
+        "has_text_search": valid_text_search,
+        "has_image_search_attempt": image_attempt,
+        "has_text_search_attempt": text_attempt,
+        "has_malformed_search_attempt": (image_attempt and not valid_image_search)
+        or (text_attempt and not valid_text_search),
     }
 
 
@@ -118,6 +142,8 @@ def classify(direct: dict[str, Any], search: dict[str, Any], correctness_mode: s
     search_correct = is_correct(search, correctness_mode)
     search_called = bool(search["has_image_search"] or search["has_text_search"])
     if not search_called:
+        if search["has_image_search_attempt"] or search["has_text_search_attempt"]:
+            return "malformed_search_attempt"
         return "search_protocol_failed"
     if not direct_correct and search_correct:
         return "search_helpful"
@@ -169,6 +195,9 @@ def build_diagnostic(
                 "search_semantic_correct": search["semantic_correct"],
                 "search_has_image": search["has_image_search"],
                 "search_has_text": search["has_text_search"],
+                "search_attempted_image": search["has_image_search_attempt"],
+                "search_attempted_text": search["has_text_search_attempt"],
+                "search_malformed_attempt": search["has_malformed_search_attempt"],
                 "direct_prediction": direct["prediction"],
                 "search_prediction": search["prediction"],
                 "direct_fallback_prediction": direct["fallback_prediction"],
@@ -181,6 +210,8 @@ def build_diagnostic(
 
     n = len(sample_rows)
     search_called = [r for r in sample_rows if r["search_has_image"] or r["search_has_text"]]
+    search_attempted = [r for r in sample_rows if r["search_attempted_image"] or r["search_attempted_text"]]
+    malformed_attempts = [r for r in sample_rows if r["search_malformed_attempt"]]
     direct_scores = [float(r["direct_score"]) for r in sample_rows]
     search_scores = [float(r["search_score"]) for r in sample_rows]
     summary = {
@@ -201,8 +232,12 @@ def build_diagnostic(
         "direct_score_mean": mean(direct_scores),
         "search_score_mean": mean(search_scores),
         "search_call_rate": len(search_called) / n if n else 0.0,
+        "search_attempt_rate": len(search_attempted) / n if n else 0.0,
+        "malformed_search_attempt_rate": len(malformed_attempts) / n if n else 0.0,
         "image_search_rate": mean([1.0 if r["search_has_image"] else 0.0 for r in sample_rows]),
+        "image_search_attempt_rate": mean([1.0 if r["search_attempted_image"] else 0.0 for r in sample_rows]),
         "text_search_rate": mean([1.0 if r["search_has_text"] else 0.0 for r in sample_rows]),
+        "text_search_attempt_rate": mean([1.0 if r["search_attempted_text"] else 0.0 for r in sample_rows]),
         "search_helpful_n": counts.get("search_helpful", 0),
         "search_helpful_rate": counts.get("search_helpful", 0) / n if n else 0.0,
         "search_unnecessary_n": counts.get("search_unnecessary", 0),
@@ -213,6 +248,8 @@ def build_diagnostic(
         "hard_rate": counts.get("hard", 0) / n if n else 0.0,
         "search_protocol_failed_n": counts.get("search_protocol_failed", 0),
         "search_protocol_failed_rate": counts.get("search_protocol_failed", 0) / n if n else 0.0,
+        "malformed_search_attempt_n": counts.get("malformed_search_attempt", 0),
+        "malformed_search_attempt_group_rate": counts.get("malformed_search_attempt", 0) / n if n else 0.0,
     }
     return summary, sample_rows
 
