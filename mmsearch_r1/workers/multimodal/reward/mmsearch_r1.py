@@ -6,6 +6,7 @@ from verl import DataProto
 from mmsearch_r1.workers.multimodal.reward.answer_utils import normalize_answer_list
 from mmsearch_r1.utils.reward_score_mm import _default_compute_score
 from mmsearch_r1.utils.reward_score_mm.mmsearch_r1_score import normalize_answer
+from mmsearch_r1.utils.dagig_offline import dagig_edge_for_extra_info, edge_tool_type, edge_weight
 
 
 TEXT_SEARCH_RE = re.compile(r"<text_search>.*?</text_search>", re.DOTALL)
@@ -99,10 +100,13 @@ class MMSearchR1_RewardManager:
         if not extra_info:
             return
         mode = extra_info.get("reward_shaping_mode", "outcome_only")
-        if mode not in {"search_success_shaping", "dagig_lite_proxy"}:
+        if mode not in {"search_success_shaping", "dagig_lite_proxy", "dagig_offline"}:
             return
 
-        bonus = float(extra_info.get("search_action_bonus", 0.0) or 0.0)
+        if mode == "dagig_offline":
+            bonus = float(extra_info.get("dagig_offline_search_bonus", 0.0) or 0.0)
+        else:
+            bonus = float(extra_info.get("search_action_bonus", 0.0) or 0.0)
         if bonus <= 0:
             return
 
@@ -115,12 +119,22 @@ class MMSearchR1_RewardManager:
                 return
             if not self.has_dagig_proxy_support(observation_text, ground_truth or []):
                 return
+        elif mode == "dagig_offline":
+            if as_bool(extra_info.get("dagig_offline_correct_only", False)) and score <= correct_threshold:
+                return
+            edge = dagig_edge_for_extra_info(extra_info, str(extra_info.get("dagig_offline_relabel_path", "")))
+            if not edge:
+                return
+            required_tool_type = str(extra_info.get("dagig_offline_bonus_tool") or edge_tool_type(edge))
+            bonus *= edge_weight(edge, str(extra_info.get("dagig_offline_weight_key", "constant")))
 
         spans = self.search_action_spans(valid_response_ids, decoded_responses)
         if not spans:
             return
 
-        for start, end, _tool_type in spans:
+        for start, end, tool_type in spans:
+            if mode == "dagig_offline" and required_tool_type and tool_type != required_tool_type:
+                continue
             length = max(end - start, 1)
             reward_tensor[row_idx, start:end] += bonus / length
 

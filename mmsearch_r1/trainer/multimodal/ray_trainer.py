@@ -755,6 +755,26 @@ class RayPPOTrainer:
                     test_batch.non_tensor_batch['extra_info'][item_id][
                         'dagig_proxy_require_correct'
                     ] = self.config.trainer.dagig_proxy_require_correct
+                if 'dagig_offline_relabel_path' in self.config.trainer:
+                    test_batch.non_tensor_batch['extra_info'][item_id][
+                        'dagig_offline_relabel_path'
+                    ] = self.config.trainer.dagig_offline_relabel_path
+                if 'dagig_offline_search_bonus' in self.config.trainer:
+                    test_batch.non_tensor_batch['extra_info'][item_id][
+                        'dagig_offline_search_bonus'
+                    ] = self.config.trainer.dagig_offline_search_bonus
+                if 'dagig_offline_correct_only' in self.config.trainer:
+                    test_batch.non_tensor_batch['extra_info'][item_id][
+                        'dagig_offline_correct_only'
+                    ] = self.config.trainer.dagig_offline_correct_only
+                if 'dagig_offline_bonus_tool' in self.config.trainer:
+                    test_batch.non_tensor_batch['extra_info'][item_id][
+                        'dagig_offline_bonus_tool'
+                    ] = self.config.trainer.dagig_offline_bonus_tool
+                if 'dagig_offline_weight_key' in self.config.trainer:
+                    test_batch.non_tensor_batch['extra_info'][item_id][
+                        'dagig_offline_weight_key'
+                    ] = self.config.trainer.dagig_offline_weight_key
             test_batch.non_tensor_batch['extra_info'] = np.array(test_batch.non_tensor_batch['extra_info'])
             shaped_reward_tensor = self.val_reward_fn(test_batch)
             answer_reward_tensor = self.val_reward_fn(_answer_only_eval_batch(test_batch))
@@ -1214,6 +1234,26 @@ class RayPPOTrainer:
                                 new_batch.non_tensor_batch['extra_info'][item_id][
                                     'dagig_proxy_require_correct'
                                 ] = self.config.trainer.dagig_proxy_require_correct
+                            if 'dagig_offline_relabel_path' in self.config.trainer:
+                                new_batch.non_tensor_batch['extra_info'][item_id][
+                                    'dagig_offline_relabel_path'
+                                ] = self.config.trainer.dagig_offline_relabel_path
+                            if 'dagig_offline_search_bonus' in self.config.trainer:
+                                new_batch.non_tensor_batch['extra_info'][item_id][
+                                    'dagig_offline_search_bonus'
+                                ] = self.config.trainer.dagig_offline_search_bonus
+                            if 'dagig_offline_correct_only' in self.config.trainer:
+                                new_batch.non_tensor_batch['extra_info'][item_id][
+                                    'dagig_offline_correct_only'
+                                ] = self.config.trainer.dagig_offline_correct_only
+                            if 'dagig_offline_bonus_tool' in self.config.trainer:
+                                new_batch.non_tensor_batch['extra_info'][item_id][
+                                    'dagig_offline_bonus_tool'
+                                ] = self.config.trainer.dagig_offline_bonus_tool
+                            if 'dagig_offline_weight_key' in self.config.trainer:
+                                new_batch.non_tensor_batch['extra_info'][item_id][
+                                    'dagig_offline_weight_key'
+                                ] = self.config.trainer.dagig_offline_weight_key
                         new_batch.non_tensor_batch['extra_info'] = np.array(new_batch.non_tensor_batch['extra_info'])
 
                         # we combine with rule-based rm

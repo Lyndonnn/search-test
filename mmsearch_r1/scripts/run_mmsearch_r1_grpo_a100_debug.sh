@@ -172,6 +172,11 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   trainer.search_action_bonus="${SEARCH_ACTION_BONUS:-0.0}" \
   trainer.search_action_bonus_correct_only="${SEARCH_ACTION_BONUS_CORRECT_ONLY:-True}" \
   trainer.dagig_proxy_require_correct="${DAGIG_PROXY_REQUIRE_CORRECT:-True}" \
+  trainer.dagig_offline_relabel_path="${DAGIG_OFFLINE_RELABEL_PATH:-}" \
+  trainer.dagig_offline_search_bonus="${DAGIG_OFFLINE_SEARCH_BONUS:-0.0}" \
+  trainer.dagig_offline_correct_only="${DAGIG_OFFLINE_CORRECT_ONLY:-False}" \
+  trainer.dagig_offline_bonus_tool="${DAGIG_OFFLINE_BONUS_TOOL:-}" \
+  trainer.dagig_offline_weight_key="${DAGIG_OFFLINE_WEIGHT_KEY:-constant}" \
   trainer.val_before_train="${VAL_BEFORE_TRAIN:-True}" \
   trainer.val_generations_to_log_to_wandb="${VAL_GENERATIONS_TO_LOG:-0}" \
   trainer.default_local_dir="$CHECKPOINT_DIR" \

@@ -230,6 +230,11 @@ trainer:
   search_action_bonus: 0.0
   search_action_bonus_correct_only: True
   dagig_proxy_require_correct: True
+  dagig_offline_relabel_path: ""
+  dagig_offline_search_bonus: 0.0
+  dagig_offline_correct_only: False
+  dagig_offline_bonus_tool: ""
+  dagig_offline_weight_key: constant
   val_before_train: True
   del_local_ckpt_after_load: False
   default_local_dir: checkpoints/${trainer.project_name}/${trainer.experiment_name}
