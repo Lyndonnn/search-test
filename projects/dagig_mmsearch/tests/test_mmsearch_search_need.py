@@ -61,7 +61,7 @@ class MMSearchSearchNeedTest(unittest.TestCase):
             direct_path="direct.json",
             search_path="search.json",
         )
-        groups = {sample["sample_key"].split("|", 1)[0]: sample["group"] for sample in samples}
+        groups = {sample["sample_key"].split("|", 1)[0].replace("image:", ""): sample["group"] for sample in samples}
 
         self.assertEqual(summary["n_aligned"], 5)
         self.assertEqual(summary["search_helpful_n"], 1)

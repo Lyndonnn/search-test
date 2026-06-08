@@ -67,8 +67,14 @@ def row_key(row: dict[str, Any], fallback_index: int) -> str:
     image_url = normalize_text(row.get("image_url"))
     input_text = normalize_text(row.get("input_text"))
     ground_truth = normalize_text(reward_model.get("ground_truth"))
-    if image_url or input_text:
-        return f"{image_url}|{input_text}|{ground_truth}"
+    # The same sample can have different prompt instructions across direct and
+    # forced-search runs, so do not key on the full input_text unless there is
+    # no stable image identifier.
+    if image_url:
+        return f"image:{image_url}|gold:{ground_truth}"
+    if input_text:
+        question_tail = input_text.rsplit("here is the image and the question:", 1)[-1].strip()
+        return f"question:{question_tail}|gold:{ground_truth}"
     return f"idx:{fallback_index}"
 
 
