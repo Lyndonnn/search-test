@@ -10,6 +10,27 @@ if [[ -f projects/dagig_mmsearch/scripts/autodl_env.sh ]]; then
   source projects/dagig_mmsearch/scripts/autodl_env.sh
 fi
 
+if [[ "${DAGIG_RELABEL_USE_REFERENCE:-0}" == "1" ]]; then
+  if ! python3 - <<'PY' >/dev/null 2>&1
+import transformers
+PY
+  then
+    PY_TAG="$(python3 - <<'PY'
+import sys
+print(f"py{sys.version_info.major}{sys.version_info.minor}")
+PY
+)"
+    DAGIG_REFERENCE_VENV="${DAGIG_REFERENCE_VENV:-$DAGIG_DATA_ROOT/venvs/dagig-reference-$PY_TAG}"
+    if [[ ! -f "$DAGIG_REFERENCE_VENV/bin/activate" ]]; then
+      echo "Missing DAG-IG reference env: $DAGIG_REFERENCE_VENV" >&2
+      echo "Run once: make dagig_setup_reference_env" >&2
+      exit 1
+    fi
+    # shellcheck disable=SC1090
+    source "$DAGIG_REFERENCE_VENV/bin/activate"
+  fi
+fi
+
 ARGS=(
   --config "${DAGIG_RELABEL_CONFIG:-projects/dagig_mmsearch/configs/dagig_lite_qwen25vl_3b_a800.yaml}"
   --limit "${DAGIG_RELABEL_LIMIT:-32}"

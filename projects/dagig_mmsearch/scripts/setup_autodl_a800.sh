@@ -14,4 +14,5 @@ if [ -d /root/autodl-tmp ]; then
 fi
 
 echo "DAG-IG setup directories created under $ROOT"
+echo "For reference-policy DAG-IG scoring, run once: make dagig_setup_reference_env"
 echo "For MMSearch-R1 baseline training, run: make mmsearch_setup_baseline"
