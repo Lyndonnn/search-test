@@ -72,6 +72,68 @@ class MMSearchSearchNeedTest(unittest.TestCase):
         self.assertEqual(groups["q_helpful.png"], "search_helpful")
         self.assertEqual(groups["q_failed.png"], "search_protocol_failed")
 
+    def test_semantic_mode_falls_back_to_full_response(self):
+        direct_rows = [
+            row(
+                "q_vegas",
+                "vegas",
+                "",
+                0.0,
+                ['The iconic "Welcome to Fabulous Las Vegas" sign is located in Las Vegas, Nevada.'],
+            )
+        ]
+        search_rows = [
+            row(
+                "q_vegas",
+                "vegas",
+                "Las Vegas",
+                1.0,
+                ["<reason>x</reason><search><img></search>", "<reason>y</reason><answer>Las Vegas</answer>"],
+            )
+        ]
+        summary, samples = build_diagnostic(
+            direct_rows=direct_rows,
+            search_rows=search_rows,
+            threshold=0.1001,
+            method="unit",
+            direct_path="direct.json",
+            search_path="search.json",
+        )
+
+        self.assertEqual(summary["correctness_mode"], "semantic")
+        self.assertEqual(summary["direct_score_correct_rate"], 0.0)
+        self.assertEqual(summary["direct_semantic_correct_rate"], 1.0)
+        self.assertEqual(summary["search_helpful_n"], 0)
+        self.assertEqual(summary["search_unnecessary_n"], 1)
+        self.assertEqual(samples[0]["group"], "search_unnecessary")
+
+    def test_score_mode_remains_available_for_format_sensitive_analysis(self):
+        direct_rows = [
+            row("q_vegas", "vegas", "", 0.0, ['The iconic sign is in Las Vegas.'])
+        ]
+        search_rows = [
+            row(
+                "q_vegas",
+                "vegas",
+                "Las Vegas",
+                1.0,
+                ["<reason>x</reason><search><img></search>", "<reason>y</reason><answer>Las Vegas</answer>"],
+            )
+        ]
+        summary, samples = build_diagnostic(
+            direct_rows=direct_rows,
+            search_rows=search_rows,
+            threshold=0.1001,
+            method="unit",
+            direct_path="direct.json",
+            search_path="search.json",
+            correctness_mode="score",
+        )
+
+        self.assertEqual(summary["correctness_mode"], "score")
+        self.assertEqual(summary["search_helpful_n"], 1)
+        self.assertEqual(samples[0]["group"], "search_helpful")
+
 
 if __name__ == "__main__":
     unittest.main()

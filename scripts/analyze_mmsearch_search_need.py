@@ -37,6 +37,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--search", required=True, help="Forced-search val_result_*.json.")
     parser.add_argument("--method", default="mmsearch_search_need", help="Method label for summary output.")
     parser.add_argument("--correct-threshold", type=float, default=0.1001, help="MMSearch-R1 score threshold.")
+    parser.add_argument(
+        "--correctness-mode",
+        choices=["semantic", "score"],
+        default="semantic",
+        help=(
+            "semantic uses exact/substring match on the answer span, falling back to full response text. "
+            "score uses MMSearch-R1's score threshold and is format-sensitive."
+        ),
+    )
     parser.add_argument("--output-csv", default="paper_artifacts/tables/search_need_diagnostic.csv")
     parser.add_argument("--output-json", default="paper_artifacts/tables/search_need_diagnostic.json")
     parser.add_argument("--output-samples-csv", default="paper_artifacts/tables/search_need_samples.csv")
@@ -74,13 +83,23 @@ def row_info(row: dict[str, Any], threshold: float) -> dict[str, Any]:
     responses = as_response_list(row.get("output_text"))
     answers = row_answers(row)
     prediction = extract_answer(responses)
+    response_text = " ".join(responses)
     score = row_score(row)
+    answer_exact = exact_match(prediction, answers)
+    answer_substring = substring_match(prediction, answers)
+    fallback_prediction = prediction or response_text
+    semantic_exact = exact_match(fallback_prediction, answers)
+    semantic_substring = substring_match(fallback_prediction, answers)
     return {
         "score": score,
         "score_correct": score >= threshold,
-        "exact_correct": exact_match(prediction, answers),
-        "substring_correct": substring_match(prediction, answers),
+        "answer_exact_correct": answer_exact,
+        "answer_substring_correct": answer_substring,
+        "semantic_exact_correct": semantic_exact,
+        "semantic_substring_correct": semantic_substring,
+        "semantic_correct": semantic_exact or semantic_substring,
         "prediction": prediction,
+        "fallback_prediction": fallback_prediction,
         "responses": responses,
         "answers": answers,
         "has_image_search": has_image_search(responses),
@@ -88,9 +107,15 @@ def row_info(row: dict[str, Any], threshold: float) -> dict[str, Any]:
     }
 
 
-def classify(direct: dict[str, Any], search: dict[str, Any]) -> str:
-    direct_correct = bool(direct["score_correct"])
-    search_correct = bool(search["score_correct"])
+def is_correct(info: dict[str, Any], correctness_mode: str) -> bool:
+    if correctness_mode == "score":
+        return bool(info["score_correct"])
+    return bool(info["semantic_correct"])
+
+
+def classify(direct: dict[str, Any], search: dict[str, Any], correctness_mode: str) -> str:
+    direct_correct = is_correct(direct, correctness_mode)
+    search_correct = is_correct(search, correctness_mode)
     search_called = bool(search["has_image_search"] or search["has_text_search"])
     if not search_called:
         return "search_protocol_failed"
@@ -114,6 +139,7 @@ def build_diagnostic(
     method: str,
     direct_path: str,
     search_path: str,
+    correctness_mode: str = "semantic",
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     direct_by_key = {row_key(row, i): row for i, row in enumerate(direct_rows)}
     search_by_key = {row_key(row, i): row for i, row in enumerate(search_rows)}
@@ -124,7 +150,7 @@ def build_diagnostic(
     for key in keys:
         direct = row_info(direct_by_key[key], threshold)
         search = row_info(search_by_key[key], threshold)
-        group = classify(direct, search)
+        group = classify(direct, search, correctness_mode)
         counts[group] = counts.get(group, 0) + 1
         sample_rows.append(
             {
@@ -133,14 +159,20 @@ def build_diagnostic(
                 "direct_score": direct["score"],
                 "search_score": search["score"],
                 "score_delta": search["score"] - direct["score"],
-                "direct_correct": direct["score_correct"],
-                "search_correct": search["score_correct"],
-                "direct_substring_correct": direct["substring_correct"],
-                "search_substring_correct": search["substring_correct"],
+                "direct_correct": is_correct(direct, correctness_mode),
+                "search_correct": is_correct(search, correctness_mode),
+                "direct_score_correct": direct["score_correct"],
+                "search_score_correct": search["score_correct"],
+                "direct_answer_substring_correct": direct["answer_substring_correct"],
+                "search_answer_substring_correct": search["answer_substring_correct"],
+                "direct_semantic_correct": direct["semantic_correct"],
+                "search_semantic_correct": search["semantic_correct"],
                 "search_has_image": search["has_image_search"],
                 "search_has_text": search["has_text_search"],
                 "direct_prediction": direct["prediction"],
                 "search_prediction": search["prediction"],
+                "direct_fallback_prediction": direct["fallback_prediction"],
+                "search_fallback_prediction": search["fallback_prediction"],
                 "gold_answers": " | ".join(search["answers"] or direct["answers"]),
                 "direct_response": " || ".join(direct["responses"]),
                 "search_response": " || ".join(search["responses"]),
@@ -155,11 +187,16 @@ def build_diagnostic(
         "method": method,
         "direct_path": direct_path,
         "search_path": search_path,
+        "correctness_mode": correctness_mode,
         "n_direct": len(direct_rows),
         "n_search": len(search_rows),
         "n_aligned": n,
         "direct_answer_score": mean([1.0 if r["direct_correct"] else 0.0 for r in sample_rows]),
         "search_answer_score": mean([1.0 if r["search_correct"] else 0.0 for r in sample_rows]),
+        "direct_score_correct_rate": mean([1.0 if r["direct_score_correct"] else 0.0 for r in sample_rows]),
+        "search_score_correct_rate": mean([1.0 if r["search_score_correct"] else 0.0 for r in sample_rows]),
+        "direct_semantic_correct_rate": mean([1.0 if r["direct_semantic_correct"] else 0.0 for r in sample_rows]),
+        "search_semantic_correct_rate": mean([1.0 if r["search_semantic_correct"] else 0.0 for r in sample_rows]),
         "score_delta_mean": mean([float(r["score_delta"]) for r in sample_rows]),
         "direct_score_mean": mean(direct_scores),
         "search_score_mean": mean(search_scores),
@@ -200,6 +237,7 @@ def main() -> None:
         method=args.method,
         direct_path=args.direct,
         search_path=args.search,
+        correctness_mode=args.correctness_mode,
     )
 
     for key, value in summary.items():
