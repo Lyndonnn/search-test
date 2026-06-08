@@ -23,21 +23,51 @@ Here is the image and the question:
 <image> 
 """
 
+IMAGE_SEARCH_REQUIRED_PROMPT = """Answer the user's question based on the provided image.
+
+For this DEBUG exploration run, you must not answer directly in the first assistant turn. You must first invoke image search exactly once by ending your response with <search><img></search>.
+
+You must include your reasoning inside <reason>...</reason> before calling image search. Do not call text search in the first assistant turn.
+
+After image search results are returned inside <information>...</information>, use the returned evidence to answer. When you are ready to answer, wrap your final answer between <answer> and </answer>, without detailed illustrations. For example: <answer>Titanic</answer>.
+
+Here is the image and the question:
+<image> 
+"""
+
+TEXT_SEARCH_REQUIRED_PROMPT = """Answer the user's question based on the provided image.
+
+For this DEBUG exploration run, you must not answer directly in the first assistant turn. You must first invoke text search exactly once by ending your response with <text_search>your concise query here</text_search>.
+
+You must include your reasoning inside <reason>...</reason> before calling text search. Do not call image search in the first assistant turn.
+
+After text search results are returned inside <information>...</information>, use the returned evidence to answer. When you are ready to answer, wrap your final answer between <answer> and </answer>, without detailed illustrations. For example: <answer>Titanic</answer>.
+
+Here is the image and the question:
+<image> 
+"""
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", default="mmsearch_r1/prompts/round_1_user_prompt_qwenvl_search_required.pkl")
+    parser.add_argument("--mode", choices=["search", "image", "text"], default="search")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    if "<image>" not in SEARCH_REQUIRED_PROMPT:
+    prompt = {
+        "search": SEARCH_REQUIRED_PROMPT,
+        "image": IMAGE_SEARCH_REQUIRED_PROMPT,
+        "text": TEXT_SEARCH_REQUIRED_PROMPT,
+    }[args.mode]
+    if "<image>" not in prompt:
         raise RuntimeError("Search-required prompt must keep the <image> placeholder for Qwen-VL.")
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     with open(args.output, "wb") as f:
-        pickle.dump(SEARCH_REQUIRED_PROMPT, f)
-    print(f"wrote {args.output}")
+        pickle.dump(prompt, f)
+    print(f"wrote {args.output} mode={args.mode}")
 
 
 if __name__ == "__main__":

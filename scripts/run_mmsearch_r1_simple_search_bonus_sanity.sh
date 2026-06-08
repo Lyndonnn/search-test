@@ -20,9 +20,10 @@ PROMPT_PATH="${USER_PROMPT_ROUND_1:-}"
 mkdir -p "$RESULT_ROOT"
 
 if [[ "${DAGIG_USE_SEARCH_REQUIRED_PROMPT:-0}" == "1" && -z "$PROMPT_PATH" ]]; then
-  PROMPT_TAG="search_required"
-  PROMPT_PATH="mmsearch_r1/prompts/round_1_user_prompt_qwenvl_search_required.pkl"
-  python3 scripts/create_mmsearch_search_required_prompts.py --output "$PROMPT_PATH"
+  PROMPT_MODE="${DAGIG_SEARCH_REQUIRED_MODE:-search}"
+  PROMPT_TAG="${PROMPT_MODE}_required"
+  PROMPT_PATH="mmsearch_r1/prompts/round_1_user_prompt_qwenvl_${PROMPT_MODE}_required.pkl"
+  python3 scripts/create_mmsearch_search_required_prompts.py --mode "$PROMPT_MODE" --output "$PROMPT_PATH"
 fi
 
 LOG_DIR="$RESULT_ROOT/logs/simple_search_bonus_${PROMPT_TAG}_${STEPS}step"
