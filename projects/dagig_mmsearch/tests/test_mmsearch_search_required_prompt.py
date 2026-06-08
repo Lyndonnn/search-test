@@ -19,9 +19,12 @@ class MMSearchSearchRequiredPromptTest(unittest.TestCase):
         prompt = module.IMAGE_SEARCH_REQUIRED_PROMPT
 
         self.assertIn("<image>", prompt)
-        self.assertIn("<reason>brief reason for why image search is needed</reason><search><img></search>", prompt)
+        self.assertIn("The current turn is the first assistant turn.", prompt)
+        self.assertIn("any <answer>...</answer> is invalid", prompt)
+        self.assertIn("<reason>I need image search to identify the visual evidence before answering.</reason><search><img></search>", prompt)
         self.assertIn("<reason>briefly use the returned visual evidence</reason><answer>final answer</answer>", prompt)
         self.assertIn("Do not output a bare <search><img></search> or bare <answer>.", prompt)
+        self.assertIn("Do not answer before image search results are returned.", prompt)
 
     def test_search_and_text_prompts_forbid_bare_answer_examples(self):
         module = load_prompt_module()
@@ -29,6 +32,7 @@ class MMSearchSearchRequiredPromptTest(unittest.TestCase):
             self.assertIn("<image>", prompt)
             self.assertIn("<reason>", prompt)
             self.assertIn("<answer>final answer</answer>", prompt)
+            self.assertIn("any <answer>...</answer> is invalid", prompt)
             self.assertNotIn("For example: <answer>Titanic</answer>", prompt)
 
 
