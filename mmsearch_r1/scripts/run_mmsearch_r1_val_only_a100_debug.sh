@@ -29,6 +29,7 @@ fi
 TRAIN_DATA_PATH="${TRAIN_DATA_PATH:-mmsearch_r1/data/fvqa_debug_train.pq}"
 VAL_DATA_PATH="${VAL_DATA_PATH:-mmsearch_r1/data/fvqa_debug_val.pq}"
 MODEL_PATH="${MMSEARCH_MODEL_PATH:-Qwen/Qwen2.5-VL-3B-Instruct}"
+USER_PROMPT_ROUND_1="${USER_PROMPT_ROUND_1:-mmsearch_r1/prompts/round_1_user_prompt_qwenvl.pkl}"
 detect_visible_gpus() {
   if [[ -n "${CUDA_VISIBLE_DEVICES:-}" && "${CUDA_VISIBLE_DEVICES}" != "-1" ]]; then
     python3 - <<'PY'
@@ -69,6 +70,7 @@ fi
 VAL_ONLY_SAVE_DIR="${VAL_ONLY_SAVE_DIR:-results/mmsearch_r1/val_only_a100_debug}"
 
 echo "MMSearch-R1 val-only GPUs: N_GPUS=$N_GPUS VLLM_TENSOR_PARALLEL_SIZE=$VLLM_TENSOR_PARALLEL_SIZE VLLM_GPU_MEMORY_UTILIZATION=$VLLM_GPU_MEMORY_UTILIZATION TRAIN_BATCH_SIZE=$TRAIN_BATCH_SIZE"
+echo "MMSearch-R1 val-only prompt: USER_PROMPT_ROUND_1=$USER_PROMPT_ROUND_1"
 
 if [[ ! -f "$TRAIN_DATA_PATH" || ! -f "$VAL_DATA_PATH" ]]; then
   echo "Missing FVQA parquet. Run: make mmsearch_prepare_fvqa_debug"
@@ -90,7 +92,7 @@ python3 -m mmsearch_r1.trainer.multimodal.main_ppo \
   data.max_prompt_length="${MAX_PROMPT_LENGTH:-2048}" \
   data.max_response_length="${MAX_RESPONSE_LENGTH:-512}" \
   data.image_key=images \
-  data.user_prompt_round_1=mmsearch_r1/prompts/round_1_user_prompt_qwenvl.pkl \
+  data.user_prompt_round_1="$USER_PROMPT_ROUND_1" \
   data.user_prompt_after_image_search=mmsearch_r1/prompts/after_image_search_prompt_qwenvl.pkl \
   data.user_prompt_after_text_search=mmsearch_r1/prompts/after_text_search_prompt_qwenvl.pkl \
   actor_rollout_ref.model.path="$MODEL_PATH" \
