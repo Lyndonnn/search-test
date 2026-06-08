@@ -40,6 +40,7 @@ def extract_metrics(path: str, method: str = "") -> dict[str, Any]:
         metrics = {"method": method or str(loaded.get("experiment_name") or os.path.basename(os.path.dirname(path))), "source_log": path}
         metrics.update(loaded)
         metrics.update(load_last_train_row(path))
+        metrics.update(load_train_aggregate(path))
         return add_stable_aliases(metrics)
 
     final_line = ""
@@ -82,6 +83,68 @@ def load_last_train_row(path: str) -> dict[str, Any]:
             continue
         out[f"last_train/{key}"] = value
     return out
+
+
+def load_train_aggregate(path: str) -> dict[str, Any]:
+    rows = load_train_rows(path)
+    if not rows:
+        return {}
+    keys = sorted({key for row in rows for key, value in row.items() if isinstance(value, (int, float))})
+    out: dict[str, Any] = {
+        "train_agg_num_rows": len(rows),
+        "train_agg_first_step": rows[0].get("step"),
+        "train_agg_last_step": rows[-1].get("step"),
+    }
+    important_suffixes = (
+        "reward_diag_bonus_applied_rate",
+        "reward_diag_dagig_bonus_mean",
+        "reward_diag_dagig_edge_loaded_rate",
+        "reward_diag_selected_edge_hit_rate",
+        "reward_diag_valid_tool_call_rate",
+        "reward_diag_effective_search_rate",
+        "reward_diag_image_search_ratio",
+        "reward_diag_text_search_ratio",
+        "reward_diag_invalid_action_rate",
+        "reward_diag_final_reward_before_shaping",
+        "reward_diag_final_reward_after_shaping",
+        "reward_diag_raw_answer_reward",
+        "actor/entropy_loss",
+        "actor/pg_clipfrac",
+        "actor/pg_loss",
+        "actor/kl_loss",
+        "critic/advantages/mean",
+        "critic/rewards/mean",
+    )
+    for key in keys:
+        if not any(key.endswith(suffix) for suffix in important_suffixes):
+            continue
+        values = [float(row[key]) for row in rows if isinstance(row.get(key), (int, float))]
+        if not values:
+            continue
+        safe_key = key.replace("/", "_")
+        out[f"train_mean_{safe_key}"] = sum(values) / len(values)
+        out[f"train_max_{safe_key}"] = max(values)
+        out[f"train_last_{safe_key}"] = values[-1]
+    return out
+
+
+def load_train_rows(path: str) -> list[dict[str, Any]]:
+    metrics_jsonl = os.path.join(os.path.dirname(path), "metrics.jsonl")
+    if not os.path.isfile(metrics_jsonl):
+        return []
+    rows = []
+    with open(metrics_jsonl, "r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("label") == "train":
+                rows.append(row)
+    return rows
 
 
 def add_stable_aliases(metrics: dict[str, Any]) -> dict[str, Any]:
