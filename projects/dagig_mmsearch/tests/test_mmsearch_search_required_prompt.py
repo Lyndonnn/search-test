@@ -35,6 +35,16 @@ class MMSearchSearchRequiredPromptTest(unittest.TestCase):
             self.assertIn("any <answer>...</answer> is invalid", prompt)
             self.assertNotIn("For example: <answer>Titanic</answer>", prompt)
 
+    def test_direct_prompt_forbids_search_tools(self):
+        module = load_prompt_module()
+        prompt = module.DIRECT_NO_SEARCH_PROMPT
+
+        self.assertIn("<image>", prompt)
+        self.assertIn("direct no-search diagnostic run", prompt)
+        self.assertIn("<reason>briefly reason from the image and question without external search</reason><answer>final answer</answer>", prompt)
+        self.assertIn("Do not output <search><img></search>.", prompt)
+        self.assertIn("Do not output <text_search>...</text_search>.", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()
