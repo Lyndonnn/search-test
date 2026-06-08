@@ -39,6 +39,7 @@ def extract_metrics(path: str, method: str = "") -> dict[str, Any]:
             raise TypeError(f"Expected a JSON object in {path}, got {type(loaded)}")
         metrics = {"method": method or str(loaded.get("experiment_name") or os.path.basename(os.path.dirname(path))), "source_log": path}
         metrics.update(loaded)
+        metrics.update(load_last_train_row(path))
         return add_stable_aliases(metrics)
 
     final_line = ""
@@ -55,6 +56,32 @@ def extract_metrics(path: str, method: str = "") -> dict[str, Any]:
         metrics[key] = float(value)
 
     return add_stable_aliases(metrics)
+
+
+def load_last_train_row(path: str) -> dict[str, Any]:
+    metrics_jsonl = os.path.join(os.path.dirname(path), "metrics.jsonl")
+    if not os.path.isfile(metrics_jsonl):
+        return {}
+    last_train = None
+    with open(metrics_jsonl, "r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("label") == "train":
+                last_train = row
+    if not last_train:
+        return {}
+    out = {}
+    for key, value in last_train.items():
+        if key in {"label", "method", "source_log"}:
+            continue
+        out[f"last_train/{key}"] = value
+    return out
 
 
 def add_stable_aliases(metrics: dict[str, Any]) -> dict[str, Any]:
@@ -93,6 +120,28 @@ def add_stable_aliases(metrics: dict[str, Any]) -> dict[str, Any]:
         metrics["val_search_fail_ratio_text"] = metrics[fail_text_keys[0]]
     if fail_image_keys:
         metrics["val_search_fail_ratio_image"] = metrics[fail_image_keys[0]]
+
+    train_bonus_keys = [k for k in metrics if k.endswith("train/reward_diag_bonus_applied_rate")]
+    train_edge_keys = [k for k in metrics if k.endswith("train/reward_diag_selected_edge_hit_rate")]
+    train_effective_keys = [k for k in metrics if k.endswith("train/reward_diag_effective_search_rate")]
+    train_invalid_keys = [k for k in metrics if k.endswith("train/reward_diag_invalid_action_rate")]
+    train_raw_answer_keys = [k for k in metrics if k.endswith("train/reward_diag_raw_answer_reward")]
+    train_before_keys = [k for k in metrics if k.endswith("train/reward_diag_final_reward_before_shaping")]
+    train_after_keys = [k for k in metrics if k.endswith("train/reward_diag_final_reward_after_shaping")]
+    if train_bonus_keys:
+        metrics["last_train_bonus_applied_rate"] = metrics[train_bonus_keys[0]]
+    if train_edge_keys:
+        metrics["last_train_selected_edge_hit_rate"] = metrics[train_edge_keys[0]]
+    if train_effective_keys:
+        metrics["last_train_effective_search_rate"] = metrics[train_effective_keys[0]]
+    if train_invalid_keys:
+        metrics["last_train_invalid_action_rate"] = metrics[train_invalid_keys[0]]
+    if train_raw_answer_keys:
+        metrics["last_train_raw_answer_reward"] = metrics[train_raw_answer_keys[0]]
+    if train_before_keys:
+        metrics["last_train_final_reward_before_shaping"] = metrics[train_before_keys[0]]
+    if train_after_keys:
+        metrics["last_train_final_reward_after_shaping"] = metrics[train_after_keys[0]]
 
     return metrics
 

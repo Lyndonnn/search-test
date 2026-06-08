@@ -1481,6 +1481,8 @@ class RayPPOTrainer:
                 if 'search_penalty' in self.config.trainer:
                     metrics["train/search_penalty"] = step_search_penalty
 
+                _write_validation_metrics(self.config, self.global_steps, metrics, "train")
+
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
 
