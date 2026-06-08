@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -77,36 +78,43 @@ class HFReferencePolicy:
         import transformers
 
         dtype = self._torch_dtype(torch)
+        model_source = resolve_local_model_path(self.cfg.name_or_path, self.cfg.cache_dir) or self.cfg.name_or_path
+        local_files_only = Path(model_source).exists()
+        cache_dir = self.cfg.cache_dir or os.environ.get("DAGIG_MODEL_CACHE") or os.environ.get("HUGGINGFACE_HUB_CACHE") or os.environ.get("HF_HOME")
         tokenizer_kwargs = {
-            "cache_dir": self.cfg.cache_dir or os.environ.get("DAGIG_MODEL_CACHE") or os.environ.get("HF_HOME"),
             "trust_remote_code": self.cfg.trust_remote_code,
+            "local_files_only": local_files_only,
         }
-        self.tokenizer = transformers.AutoTokenizer.from_pretrained(self.cfg.name_or_path, **tokenizer_kwargs)
+        if cache_dir and not local_files_only:
+            tokenizer_kwargs["cache_dir"] = cache_dir
+        self.tokenizer = transformers.AutoTokenizer.from_pretrained(model_source, **tokenizer_kwargs)
         if getattr(self.tokenizer, "pad_token_id", None) is None and getattr(self.tokenizer, "eos_token", None):
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
         model_kwargs: dict[str, Any] = {
-            "cache_dir": self.cfg.cache_dir or os.environ.get("DAGIG_MODEL_CACHE") or os.environ.get("HF_HOME"),
             "torch_dtype": dtype,
             "device_map": self.cfg.device_map,
             "trust_remote_code": self.cfg.trust_remote_code,
             "low_cpu_mem_usage": True,
+            "local_files_only": local_files_only,
         }
+        if cache_dir and not local_files_only:
+            model_kwargs["cache_dir"] = cache_dir
         if self.cfg.attn_implementation:
             model_kwargs["attn_implementation"] = self.cfg.attn_implementation
 
         errors: list[str] = []
         for class_name in (
-            "AutoModelForCausalLM",
+            "Qwen2_5_VLForConditionalGeneration",
             "AutoModelForImageTextToText",
             "AutoModelForVision2Seq",
-            "Qwen2_5_VLForConditionalGeneration",
+            "AutoModelForCausalLM",
         ):
             model_cls = getattr(transformers, class_name, None)
             if model_cls is None:
                 continue
             try:
-                self.model = model_cls.from_pretrained(self.cfg.name_or_path, **model_kwargs)
+                self.model = model_cls.from_pretrained(model_source, **model_kwargs)
                 break
             except Exception as exc:
                 errors.append(f"{class_name}: {exc}")
@@ -136,6 +144,52 @@ class HFReferencePolicy:
         if self.cfg.dtype in {"fp32", "float32"}:
             return torch_module.float32
         return "auto"
+
+
+def resolve_local_model_path(name_or_path: str, cache_dir: str | None = None) -> str | None:
+    source = Path(name_or_path)
+    if source.exists():
+        return str(source)
+
+    repo_cache_name = f"models--{name_or_path.replace('/', '--')}"
+    roots: list[Path] = []
+    for value in (
+        cache_dir,
+        os.environ.get("DAGIG_MODEL_CACHE"),
+        os.environ.get("HUGGINGFACE_HUB_CACHE"),
+        os.environ.get("TRANSFORMERS_CACHE"),
+        os.environ.get("HF_HOME"),
+    ):
+        if value:
+            root = Path(value)
+            roots.append(root)
+            roots.append(root / "hub")
+
+    seen: set[Path] = set()
+    candidates: list[Path] = []
+    for root in roots:
+        if root in seen:
+            continue
+        seen.add(root)
+        snapshots_dir = root / repo_cache_name / "snapshots"
+        if not snapshots_dir.is_dir():
+            continue
+        for snapshot in snapshots_dir.iterdir():
+            if is_usable_snapshot(snapshot):
+                candidates.append(snapshot)
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return str(candidates[0])
+
+
+def is_usable_snapshot(path: Path) -> bool:
+    if not path.is_dir() or not (path / "config.json").is_file():
+        return False
+    if (path / "model.safetensors.index.json").is_file():
+        return True
+    return any(path.glob("*.safetensors")) or any(path.glob("*.bin"))
 
 
 def load_reference_policy_from_config(config: dict[str, Any]) -> HFReferencePolicy:
