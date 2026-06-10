@@ -29,6 +29,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--details_csv", action="append", required=True)
     parser.add_argument("--output_csv", required=True)
     parser.add_argument("--dedupe", action="store_true", help="Deduplicate repeated dev rows by sample_id.")
+    parser.add_argument(
+        "--corpus_mode",
+        choices=["all", "local_evidence", "evidence_only"],
+        default="all",
+        help=(
+            "Fields used to build retrieval documents. Use evidence_only for a harder "
+            "diagnostic that avoids question-token leakage."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -85,7 +94,26 @@ class BM25:
         return ranked
 
 
-def build_corpus(package_dir: Path, main_file: str) -> tuple[BM25, dict[str, dict[str, Any]]]:
+def corpus_text(row: dict[str, Any], mode: str) -> str:
+    if mode == "evidence_only":
+        return str(row.get("selected_evidence_text", ""))
+    if mode == "local_evidence":
+        return " ".join(
+            [
+                str(row.get("qwen_local_observation", "")),
+                str(row.get("selected_evidence_text", "")),
+            ]
+        )
+    return " ".join(
+        [
+            str(row.get("question", "")),
+            str(row.get("qwen_local_observation", "")),
+            str(row.get("selected_evidence_text", "")),
+        ]
+    )
+
+
+def build_corpus(package_dir: Path, main_file: str, corpus_mode: str) -> tuple[BM25, dict[str, dict[str, Any]]]:
     path = Path(main_file)
     if not path.is_absolute():
         path = package_dir / path
@@ -93,13 +121,7 @@ def build_corpus(package_dir: Path, main_file: str) -> tuple[BM25, dict[str, dic
     by_id = {str(r["sample_id"]): r for r in rows}
     docs = []
     for row in rows:
-        text = " ".join(
-            [
-                str(row.get("question", "")),
-                str(row.get("qwen_local_observation", "")),
-                str(row.get("selected_evidence_text", "")),
-            ]
-        )
+        text = corpus_text(row, corpus_mode)
         docs.append({"sample_id": str(row["sample_id"]), "text": text})
     return BM25(docs), by_id
 
@@ -129,6 +151,13 @@ def reciprocal_rank(ranked: list[tuple[str, float]], target_id: str) -> float:
     return 0.0
 
 
+def target_rank(ranked: list[tuple[str, float]], target_id: str) -> int:
+    for idx, (sample_id, _score) in enumerate(ranked, start=1):
+        if sample_id == target_id:
+            return idx
+    return len(ranked) + 1
+
+
 def evaluate_file(path: Path, bm25: BM25, dedupe: bool) -> dict[str, Any]:
     rows = load_search_rows(path, dedupe=dedupe)
     if not rows:
@@ -136,17 +165,25 @@ def evaluate_file(path: Path, bm25: BM25, dedupe: bool) -> dict[str, Any]:
     top1 = top3 = top5 = mrr = 0.0
     nonempty = 0.0
     score_at_target = []
+    target_ranks = []
+    score_margins = []
     for row in rows:
         pred = row["prediction"].strip()
         nonempty += 1.0 if pred else 0.0
         ranked = bm25.rank(pred)
         ids = [sample_id for sample_id, _score in ranked]
         target_id = row["sample_id"]
+        rank = target_rank(ranked, target_id)
+        target_ranks.append(rank)
         top1 += 1.0 if ids[:1] == [target_id] else 0.0
         top3 += 1.0 if target_id in ids[:3] else 0.0
         top5 += 1.0 if target_id in ids[:5] else 0.0
         mrr += reciprocal_rank(ranked, target_id)
-        score_at_target.append(dict(ranked).get(target_id, 0.0))
+        ranked_scores = dict(ranked)
+        target_score = ranked_scores.get(target_id, 0.0)
+        best_wrong = max((score for sample_id, score in ranked if sample_id != target_id), default=0.0)
+        score_at_target.append(target_score)
+        score_margins.append(target_score - best_wrong)
     n = len(rows)
     return {
         "method": method_from_path(path),
@@ -157,15 +194,19 @@ def evaluate_file(path: Path, bm25: BM25, dedupe: bool) -> dict[str, Any]:
         "retrieval_top3": top3 / n,
         "retrieval_top5": top5 / n,
         "retrieval_mrr": mrr / n,
+        "target_rank_mean": sum(target_ranks) / n,
         "target_score_mean": sum(score_at_target) / n,
+        "target_score_margin_mean": sum(score_margins) / n,
     }
 
 
 def main() -> None:
     args = parse_args()
     package_dir = Path(args.package_dir).expanduser().resolve()
-    bm25, _by_id = build_corpus(package_dir, args.main_file)
+    bm25, _by_id = build_corpus(package_dir, args.main_file, args.corpus_mode)
     out_rows = [evaluate_file(Path(path), bm25, dedupe=args.dedupe) for path in args.details_csv]
+    for row in out_rows:
+        row["corpus_mode"] = args.corpus_mode
     out_path = Path(args.output_csv)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", newline="", encoding="utf-8") as f:
