@@ -2,7 +2,207 @@
 
 Date: 2026-06-18  
 Repo: `https://github.com/Lyndonnn/search-test.git`  
-Current remote `main`: `ec5ae37 Harden Pix2Fact query retrieval diagnostic`
+Current GitHub `main`: includes the DAG-IG training/eval code through `ec5ae37`, and the first handover doc commit `7e97415`. Pull latest before running anything.
+
+```bash
+git clone https://github.com/Lyndonnn/search-test.git
+cd search-test
+git pull
+git rev-parse --short HEAD
+```
+
+## 0. Links, Sources, and Paths
+
+### 0.1 Primary Repo
+
+```text
+Project repo:
+https://github.com/Lyndonnn/search-test.git
+```
+
+Current important commits:
+
+```text
+4ac6484 Add DAG-IG Pix2Fact SFT training scripts
+6e00b1b Add Pix2Fact query retrieval diagnostic
+ec5ae37 Harden Pix2Fact query retrieval diagnostic
+7e97415 Add DAG-IG project handover
+```
+
+### 0.2 Reference Repos
+
+These are the main external projects that shaped the implementation plan:
+
+```text
+IG-Search:
+https://github.com/MaYufei-NPU/IG-Search
+
+MMSearch-R1 / multimodal-search-r1:
+https://github.com/EvolvingLMMs-Lab/multimodal-search-r1
+
+MMSearch-Plus:
+https://github.com/mmsearch-plus/MMSearch-Plus
+
+lmms-eval:
+https://github.com/EvolvingLMMs-Lab/lmms-eval
+```
+
+Important note:
+
+- `MMSearch-R1` was investigated as the RL baseline route.
+- The current strongest path is not FVQA/MMSearch-R1 debug, but Pix2Fact delayed-credit data with DAG-IG shaped SFT/eval.
+
+### 0.3 Model and Dataset Links
+
+Model used in the current pilot:
+
+```text
+Qwen2.5-VL-3B-Instruct:
+https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct
+```
+
+Model intended for later stronger experiments:
+
+```text
+Qwen2.5-VL-7B-Instruct:
+https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct
+```
+
+FVQA debug dataset used earlier:
+
+```text
+lmms-lab/FVQA:
+https://huggingface.co/datasets/lmms-lab/FVQA
+```
+
+Pix2Fact data:
+
+```text
+Current usable Pix2Fact data is packaged locally by our Colab/data pipeline.
+The exact upstream Pix2Fact raw-source URL is not stored in this repo yet.
+If another collaborator needs to reproduce raw data acquisition, add that raw-source link and Colab notebook path here.
+```
+
+### 0.4 Local Machine Paths
+
+Local package used for the 30-sample pilot:
+
+```text
+/Users/lyndon/Downloads/dagig_training_package_v1_with_images.zip
+```
+
+Local summary currently open in the IDE:
+
+```text
+/Users/lyndon/Downloads/pix2fact_summary.json
+```
+
+Summary contents from `pix2fact_summary.json`:
+
+```json
+{
+  "raw_n": 300,
+  "clean_n": 297,
+  "rejected_n": 3,
+  "clean_has_bbox_n": 297,
+  "clean_answer_in_search_query_n": 1,
+  "teacher_traj_n": 296,
+  "positive_docs_n": 393,
+  "negative_docs_n": 891,
+  "bm25_hit_positive_top5_rate": 0.4882154882154882,
+  "bm25_answer_in_top5_rate": 0.24915824915824916
+}
+```
+
+Interpretation:
+
+- The current zip used for training is only a 30-sample package.
+- The `pix2fact_summary.json` suggests there is already a larger 300-raw / 297-clean candidate pool.
+- The next handoff task should convert this larger pool into a v2 training package, not continue tuning on the 30-sample package.
+
+### 0.5 Server Paths
+
+Main server workspace:
+
+```text
+/root/autodl-tmp/search-test
+```
+
+Current data package location:
+
+```text
+/root/autodl-tmp/dagig_train/dagig_training_package_v1_with_images.zip
+/root/autodl-tmp/dagig_train/package/
+```
+
+Generated SFT data:
+
+```text
+/root/autodl-tmp/dagig_train/data/
+```
+
+Training outputs:
+
+```text
+/root/autodl-tmp/dagig_train/outputs/
+```
+
+Eval outputs:
+
+```text
+/root/autodl-tmp/dagig_train/results/
+```
+
+HF cache:
+
+```text
+/root/autodl-tmp/dagig/hf_cache/
+```
+
+Known model cache status:
+
+```text
+Qwen2.5-VL-3B-Instruct: available locally on server.
+Qwen2.5-VL-7B-Instruct: not found complete locally at the time of pilot.
+```
+
+### 0.6 Data Transfer Commands
+
+Upload the current package from local Mac to server:
+
+```bash
+ssh -p 46242 root@connect.nma1.seetacloud.com "mkdir -p /root/autodl-tmp/dagig_train"
+
+scp -P 46242 /Users/lyndon/Downloads/dagig_training_package_v1_with_images.zip \
+  root@connect.nma1.seetacloud.com:/root/autodl-tmp/dagig_train/
+```
+
+For a future v2 package, use the same pattern:
+
+```bash
+scp -P 46242 /path/to/dagig_training_package_v2_200_with_images.zip \
+  root@connect.nma1.seetacloud.com:/root/autodl-tmp/dagig_train/
+```
+
+### 0.7 Server Network via Local VPN
+
+On local Mac, keep this terminal open:
+
+```bash
+ssh -N \
+  -p 46242 \
+  -R 127.0.0.1:7890:127.0.0.1:7890 \
+  root@connect.nma1.seetacloud.com
+```
+
+On server:
+
+```bash
+export HTTP_PROXY=http://127.0.0.1:7890
+export HTTPS_PROXY=http://127.0.0.1:7890
+export ALL_PROXY=http://127.0.0.1:7890
+curl -I https://huggingface.co --max-time 20
+```
 
 ## 1. Project Goal
 
@@ -20,10 +220,16 @@ Current working claim:
 
 ## 2. Current Code State
 
-The handoff branch is GitHub `main`, remote commit:
+The handoff branch is GitHub `main`. The last code-only commit before this handover is:
 
 ```bash
 ec5ae37 Harden Pix2Fact query retrieval diagnostic
+```
+
+The first handover document commit is:
+
+```bash
+7e97415 Add DAG-IG project handover
 ```
 
 Relevant scripts:
@@ -43,6 +249,81 @@ Script responsibilities:
 - `02_train_lora_qwen_vl.py`: small LoRA/QLoRA SFT for Qwen2.5-VL.
 - `03_eval_chain.py`: evaluate local clue extraction, search query generation, and answer-from-evidence.
 - `04_eval_query_retrieval.py`: evaluate generated search queries by BM25 retrieval over evidence corpus; supports `--corpus_mode evidence_only`.
+
+### 2.1 Full Code Entry Map
+
+Current mainline for Pix2Fact DAG-IG:
+
+```text
+scripts/dagig_train/00_inspect_package.py
+scripts/dagig_train/01_build_sft_data.py
+scripts/dagig_train/02_train_lora_qwen_vl.py
+scripts/dagig_train/03_eval_chain.py
+scripts/dagig_train/04_eval_query_retrieval.py
+```
+
+Earlier MMSearch-R1 / FVQA baseline and debugging code:
+
+```text
+scripts/bootstrap_colab.sh
+scripts/setup_mmsearch_r1_baseline_env.sh
+scripts/mmsearch_r1_env.sh
+scripts/check_mmsearch_cuda_stack.py
+scripts/check_mmsearch_hydra_overrides.py
+scripts/install_mmsearch_flash_attn.sh
+scripts/patch_mmsearch_r1_verl_flash_attn.py
+scripts/prepare_fvqa_verl.py
+scripts/prepare_mmsearch_r1_fvqa_debug.sh
+scripts/eval_fvqa_debug.py
+scripts/run_mmsearch_r1_mainline_matrix.sh
+scripts/run_mmsearch_r1_outcome_sanity.sh
+scripts/run_mmsearch_r1_simple_search_bonus_sanity.sh
+scripts/run_mmsearch_r1_search_bonus_sanity.sh
+scripts/run_mmsearch_r1_search_required_sanity.sh
+scripts/run_mmsearch_r1_dagig_proxy_sanity.sh
+scripts/run_mmsearch_r1_dagig_offline_sanity.sh
+scripts/analyze_mmsearch_search_need.py
+scripts/run_mmsearch_search_need_diagnostic.sh
+scripts/summarize_mmsearch_val_result.py
+scripts/extract_mmsearch_train_metrics.py
+```
+
+Earlier standalone DAG-IG prototype under `projects/dagig_mmsearch/`:
+
+```text
+projects/dagig_mmsearch/src/reward/
+projects/dagig_mmsearch/src/tools/
+projects/dagig_mmsearch/src/agent/
+projects/dagig_mmsearch/src/eval/
+projects/dagig_mmsearch/src/train/
+projects/dagig_mmsearch/scripts/
+projects/dagig_mmsearch/tests/
+```
+
+Important Make targets:
+
+```text
+make smoke
+make autodl_check
+make reference_logprob_smoke
+make reference_ablation
+make offline_dependency_relabel
+make model_agent_rollout
+make model_agent_two_turn
+make mmsearch_setup_baseline
+make mmsearch_cuda_preflight
+make mmsearch_prepare_fvqa_debug
+make mmsearch_val_only
+make mmsearch_search_need_diagnostic
+make mmsearch_mainline_matrix
+make clean_autodl_small_disk
+```
+
+Code path recommendation:
+
+- Use `scripts/dagig_train/*` for the next Pix2Fact paper-path experiments.
+- Treat `projects/dagig_mmsearch/*` and MMSearch/FVQA scripts as prior infrastructure/smoke work unless specifically needed.
+- Do not spend more time debugging MMSearch-R1 unless a later phase requires direct GRPO baseline reproduction.
 
 ## 3. Current Data
 
@@ -231,6 +512,51 @@ export HTTP_PROXY=http://127.0.0.1:7890
 export HTTPS_PROXY=http://127.0.0.1:7890
 export ALL_PROXY=http://127.0.0.1:7890
 ```
+
+### 5.1 Server Setup From Scratch
+
+Use data disk, not system disk:
+
+```bash
+cd /root/autodl-tmp
+git clone https://github.com/Lyndonnn/search-test.git search-test || true
+cd /root/autodl-tmp/search-test
+git pull
+```
+
+Install the light Pix2Fact DAG-IG training dependencies:
+
+```bash
+python3 -m pip install -U \
+  "transformers==4.51.3" \
+  accelerate \
+  peft \
+  "qwen-vl-utils[decord]" \
+  pandas \
+  tqdm \
+  pillow \
+  bitsandbytes
+```
+
+If using a clean virtualenv:
+
+```bash
+python3 -m venv /root/autodl-tmp/dagig/venvs/dagig-sft-py312
+source /root/autodl-tmp/dagig/venvs/dagig-sft-py312/bin/activate
+python3 -m pip install -U pip
+python3 -m pip install -U \
+  "transformers==4.51.3" accelerate peft "qwen-vl-utils[decord]" \
+  pandas tqdm pillow bitsandbytes
+```
+
+Find local Qwen 3B model cache:
+
+```bash
+export QWEN3B_LOCAL="$(find /root/autodl-tmp /root/.cache -type d -path '*models--Qwen--Qwen2.5-VL-3B-Instruct/snapshots/*' 2>/dev/null | head -n 1)"
+echo "$QWEN3B_LOCAL"
+```
+
+If the path is empty, either use the local Mac VPN tunnel or `HF_ENDPOINT=https://hf-mirror.com` to download the model into `/root/autodl-tmp/dagig/hf_cache`.
 
 ## 6. Experiments Already Run
 
