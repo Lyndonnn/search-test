@@ -2,16 +2,262 @@
 
 Date: 2026-06-18  
 Repo: `https://github.com/Lyndonnn/search-test.git`  
-Current GitHub `main`: includes the DAG-IG training/eval code through `ec5ae37`, and the first handover doc commit `7e97415`. Pull latest before running anything.
+Current GitHub `main`: contains the DAG-IG training/eval code and this handover. Pull latest and use `git log --oneline -5` to verify the newest commit before running anything.
 
-```bash
-git clone https://github.com/Lyndonnn/search-test.git
-cd search-test
-git pull
-git rev-parse --short HEAD
+## Read First: Full Research Goal
+
+This project is not primarily a codebase cleanup task. The goal is to develop a publishable multimodal search-agent method for ICLR / NeurIPS / ICML / ACL-level work.
+
+Project name:
+
+```text
+DAG-IG: Dependency-Aware Information Gain for Multimodal Search Agents
 ```
 
-## 0. Links, Sources, and Paths
+One-sentence goal:
+
+```text
+Train multimodal search agents to credit early visual/tool observations not only when they directly improve final answers, but also when they enable better future tool actions such as crop, OCR, image search, text search, evidence selection, and answer refinement.
+```
+
+The final agent should solve tasks where the answer is not directly visible in the image and not directly available from the initial question. A typical successful trajectory should look like:
+
+```text
+image/question
+  -> identify local visual clue from image or crop
+  -> generate a high-quality search query using that clue
+  -> retrieve/select supporting external evidence
+  -> answer using the evidence
+```
+
+The core scientific problem is delayed credit assignment in multimodal tool-use trajectories. In many realistic tasks, the first useful action does not directly increase final answer probability. For example, reading a logo from an image may not answer the question, but it enables the correct web search query; a crop may not answer the question, but it enables OCR; OCR may not answer the question, but it enables a later retrieval action. Outcome-only reward and answer-centered IG under-credit these early enabling steps.
+
+## Paper Thesis
+
+The intended paper thesis:
+
+```text
+Answer-centered information gain is insufficient for multimodal search agents because many useful visual/tool observations are only valuable through their effect on future actions. Future-action information gain provides a hindsight subgoal signal: if replacing an earlier observation makes the later real action less likely, then the earlier observation enabled that action and should receive credit. Typed counterfactuals and dependency-aware propagation turn this signal into stable token-level rewards for multimodal tool use.
+```
+
+The paper should argue four main claims:
+
+1. **Delayed enabling actions are common in multimodal search.** Image crops, OCR snippets, logos, partial visual clues, and intermediate search results may be essential even when they do not directly predict the final answer.
+2. **Outcome-only and local-answer IG are structurally misaligned.** They reward final answer correctness or direct answer likelihood, but they do not distinguish useful search-enabling actions from irrelevant or lucky search behavior.
+3. **Future-action IG gives label-free subgoal credit.** Later action spans are treated as hindsight subgoals. No human subgoal annotation is required.
+4. **Typed multimodal counterfactuals are necessary.** A text-search observation must be compared against text-search counterfactuals, an OCR result against OCR-like text, an image-search result against image-search results, etc. Otherwise the reward learns modality/format artifacts rather than information value.
+
+## Proposed Method
+
+A tool trajectory contains steps:
+
+```text
+n_i = (m_i, A_i, O_i, S_i, C_i)
+```
+
+Where:
+
+```text
+m_i = tool type, such as image_search, text_search, crop, OCR, select, stop
+A_i = action span, such as query tokens, bbox tokens, OCR region, selected index
+O_i = raw observation returned by the tool
+S_i = self-evidence summary of the observation
+C_i = context before generating the current or final action
+```
+
+Baseline local IG:
+
+```text
+g_i = log p(answer | real context with O_i)
+      - E_cf log p(answer | context where O_i is replaced by typed counterfactual)
+```
+
+DAG-IG future-action IG:
+
+```text
+d_{i->j} = ReLU(
+  log p(A_j | real history before step j)
+  - E_cf log p(A_j | history where O_i is replaced by typed counterfactual)
+)
+```
+
+Interpretation:
+
+```text
+If replacing observation i makes the later real action j less likely, then observation i enabled action j.
+```
+
+First practical version:
+
+```text
+DAG-IG-Lite:
+R_i = g_i + lambda_dep * d_{i->i+1} * max(g_{i+1}, 0)
+```
+
+The reward is injected only into the source step's action span tokens with action-length normalization. This prevents rewarding the entire response and prevents query-length reward hacking.
+
+## Expected Paper Contributions
+
+The intended contribution list:
+
+1. **Generalization of IG-Search to typed multimodal tool trajectories.** The unit of credit is no longer just a text retrieval result; it can be crop, OCR, image search, text search, select, or stop.
+2. **Future-action information gain.** Later tool-action spans are used as hindsight subgoals, giving credit to earlier observations that enabled them.
+3. **DAG-IG-Lite.** A low-cost next-step dependency propagation method that avoids expensive full-DAG scoring while testing the key delayed-credit hypothesis.
+4. **Typed counterfactual and self-evidence summary pipeline.** Counterfactuals are modality/type matched, and noisy observations are summarized before IG scoring.
+5. **Attribution and utility diagnostics for multimodal search.** Evaluation should include evidence retrieval utility, search helpfulness, over-search, under-search, and leave-one-step-out importance, not only final answer accuracy.
+
+## Why This Could Beat Prior Work
+
+### Compared with direct VQA
+
+Direct VQA can answer easy visual questions, but it fails when the answer requires external knowledge that is only reachable after identifying a local visual clue. DAG-IG targets exactly this regime.
+
+Expected advantage:
+
+```text
+better performance on search-required and evidence-required questions
+```
+
+### Compared with prompted search agents
+
+Prompted agents may call tools, but the behavior is not learned and often depends on brittle formatting instructions. They can over-search, under-search, or produce malformed tool calls.
+
+Expected advantage:
+
+```text
+learned search behavior with higher valid action rate and higher evidence-directed query utility
+```
+
+### Compared with MMSearch-R1-style outcome-only RL
+
+Outcome-only RL rewards final correctness. If the base model can answer without search, outcome-only training may collapse to direct answering and suppress search. If search is forced, it may reward any search that coincides with correctness, not necessarily useful search.
+
+Expected advantage:
+
+```text
+DAG-IG should preserve useful search behavior because it gives intermediate action-span credit when earlier observations enable later evidence-seeking actions.
+```
+
+This is the key difference from simple search bonuses. A simple search bonus says "searching is good." DAG-IG says "this earlier observation is good only if it causally supports a useful later action."
+
+### Compared with IG-Search
+
+IG-Search focuses on answer-centered information gain in text search. In multimodal tool chains, many important actions are not answer-improving by themselves.
+
+Expected advantage:
+
+```text
+DAG-IG should better credit early visual grounding steps, crop/OCR chains, and query-generation steps whose value is delayed.
+```
+
+### Compared with simple search-bonus baselines
+
+A search bonus can increase tool use but may also increase useless or harmful search. DAG-IG should improve evidence quality without blindly increasing search frequency.
+
+Required control:
+
+```text
+outcome_only vs simple_search_bonus vs local_ig vs dagig
+```
+
+DAG-IG is only convincing if it improves evidence retrieval / final answer more efficiently than simple search bonuses.
+
+## What SOTA Means for This Project
+
+The project should not claim SOTA on generic VQA first. The correct target is:
+
+```text
+multimodal search-required / external-evidence-required VQA
+```
+
+The strongest result would show:
+
+1. Higher final answer accuracy on search-required examples.
+2. Higher evidence retrieval top-1 / MRR from generated search queries.
+3. Higher effective search rate, not just higher tool-call count.
+4. Lower search failure and invalid action rate.
+5. Better credit attribution alignment with leave-one-step-out importance.
+6. Better tool efficiency: more answer gain per tool call.
+
+The expected route to strong results:
+
+```text
+Construct a dataset where direct image answering is insufficient,
+where local visual clues enable search,
+and where the retrieved evidence is required for the final answer.
+Then train outcome-only/local-IG/DAG-IG under the same model, data, prompt, and tool budget.
+```
+
+If the dataset is too easy for direct VQA or too noisy for search, the method cannot be fairly evaluated.
+
+## Current Result in One Sentence
+
+The current 30-sample Pix2Fact pilot is not a paper result, but it provides a meaningful first signal:
+
+```text
+DAG-IG improved evidence-only query retrieval utility over outcome-only and local-IG on the small held-out set, especially in MRR and target score margin.
+```
+
+Current evidence-only query retrieval pilot:
+
+```text
+outcome_only_3b_5ep:
+  top1 = 0.6667
+  MRR = 0.8056
+  score_margin = 5.5313
+
+local_ig_3b_5ep:
+  top1 = 0.6667
+  MRR = 0.8056
+  score_margin = 5.5468
+
+dagig_3b_5ep:
+  top1 = 0.8333
+  MRR = 0.9167
+  score_margin = 6.8195
+```
+
+This is a pilot because the dev set has only 6 source examples. The next decisive milestone is a 200-sample clean Pix2Fact-DAGIG package with a harder evidence corpus.
+
+## What The Next Collaborator Should Focus On
+
+The most important next task is not more server debugging. It is data quality and scale.
+
+Immediate next objective:
+
+```text
+Build Pix2Fact-DAGIG v2:
+200 clean samples
+160 train / 40 dev
+harder evidence corpus
+same schema as v1
+group split by entity/domain to avoid leakage
+```
+
+Then rerun:
+
+```text
+base_3B
+outcome_only_3B
+local_ig_3B
+dagig_3B
+dagig_action_only_3B
+```
+
+Primary metrics:
+
+```text
+evidence-only retrieval_top1
+evidence-only retrieval_mrr
+target_score_margin_mean
+local_observation F1
+answer_from_evidence F1
+final answer accuracy after retrieved evidence
+```
+
+Only if v2 preserves the DAG-IG advantage should the project move to 7B, GRPO, and larger-scale MMSearch-style comparisons.
+
+## Engineering Appendix: Links, Sources, and Paths
 
 ### 0.1 Primary Repo
 
