@@ -28,8 +28,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_pixels", type=int, default=512 * 512)
     parser.add_argument("--max_length", type=int, default=2048)
     parser.add_argument("--use_qlora", action="store_true")
+    parser.add_argument("--gradient_checkpointing", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--smoke_test", action="store_true")
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--max_steps", type=int, default=0)
+    parser.add_argument("--save_steps", type=int, default=0)
+    parser.add_argument("--logging_steps", type=int, default=1)
     return parser.parse_args()
 
 
@@ -80,6 +84,64 @@ class WeightedQwenVLCollator:
     def __init__(self, processor: Any, max_length: int):
         self.processor = processor
         self.max_length = max_length
+        self.tokenizer = getattr(processor, "tokenizer", processor)
+
+    @staticmethod
+    def find_subsequence(haystack: list[int], needle: list[int], start_at: int = 0) -> int:
+        if not needle or len(needle) > len(haystack):
+            return -1
+        first = needle[0]
+        max_start = len(haystack) - len(needle)
+        for start in range(max(start_at, 0), max_start + 1):
+            if haystack[start] != first:
+                continue
+            if haystack[start : start + len(needle)] == needle:
+                return start
+        return -1
+
+    def encode_text(self, text: str) -> list[int]:
+        return self.tokenizer.encode(text, add_special_tokens=False)
+
+    def segment_texts(self, ex: dict[str, Any]) -> dict[str, str]:
+        segments = ex.get("target_segments")
+        if isinstance(segments, dict):
+            return {str(k): str(v) for k, v in segments.items()}
+        target = str(ex.get("target", ""))
+        return {"target": target}
+
+    def build_loss_weights(self, ex: dict[str, Any], input_ids: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        weights = torch.zeros_like(labels, dtype=torch.float32)
+        ids = input_ids[0].tolist()
+        segment_weights = ex.get("segment_weights")
+        if not isinstance(segment_weights, dict):
+            segment_weights = {"target": float(ex.get("loss_weight", 1.0))}
+
+        any_found = False
+        for name, text in self.segment_texts(ex).items():
+            block = f"<{name}>\n{text}\n</{name}>" if name != "target" else text
+            encoded = self.encode_text(block)
+            start = self.find_subsequence(ids, encoded)
+            if start < 0 and name != "target":
+                encoded = self.encode_text(str(text))
+                start = self.find_subsequence(ids, encoded)
+            if start >= 0:
+                weight = float(segment_weights.get(name, ex.get("loss_weight", 1.0)) or 0.0)
+                weights[:, start : start + len(encoded)] = weight
+                any_found = True
+
+        if not any_found:
+            fallback = float(ex.get("loss_weight", 1.0) or 1.0)
+            weights[labels != -100] = fallback
+        else:
+            positive = labels != -100
+            unweighted_target = positive & (weights <= 0)
+            if bool(unweighted_target.any()):
+                min_positive = min(
+                    [float(v) for v in segment_weights.values() if float(v) > 0.0] or [float(ex.get("loss_weight", 1.0) or 1.0)]
+                )
+                weights[unweighted_target] = min(min_positive, 0.05)
+        weights[labels == -100] = 0.0
+        return weights
 
     def __call__(self, features: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
         if len(features) != 1:
@@ -122,7 +184,7 @@ class WeightedQwenVLCollator:
         labels[:, :prompt_len] = -100
         labels[model_inputs["attention_mask"] == 0] = -100
         model_inputs["labels"] = labels
-        model_inputs["loss_weight"] = torch.tensor([float(ex.get("loss_weight", 1.0))], dtype=torch.float32)
+        model_inputs["loss_weights"] = self.build_loss_weights(ex, model_inputs["input_ids"], labels)
         return model_inputs
 
 
@@ -153,6 +215,8 @@ def load_model_and_processor(args: argparse.Namespace) -> tuple[Any, Any]:
         quantization_config=quantization_config,
     )
     model.config.use_cache = False
+    if args.gradient_checkpointing:
+        model.gradient_checkpointing_enable()
     return model, processor
 
 
@@ -161,6 +225,8 @@ def add_lora(model: Any, args: argparse.Namespace) -> Any:
 
     if args.use_qlora:
         model = prepare_model_for_kbit_training(model)
+    if hasattr(model, "enable_input_require_grads"):
+        model.enable_input_require_grads()
     config = LoraConfig(
         r=args.lora_r,
         lora_alpha=args.lora_alpha,
@@ -194,11 +260,27 @@ def main() -> None:
 
     class WeightedTrainer(Trainer):
         def compute_loss(self, model: Any, inputs: dict[str, Any], return_outputs: bool = False, **kwargs: Any):
-            loss_weight = inputs.pop("loss_weight").to(model.device)
+            loss_weights = inputs.pop("loss_weights").to(model.device)
+            labels = inputs.get("labels")
             outputs = model(**inputs)
-            loss = outputs.loss * loss_weight.mean()
+            logits = outputs.logits
+            if labels is None:
+                loss = outputs.loss
+            else:
+                labels = labels.to(logits.device)
+                shift_logits = logits[..., :-1, :].contiguous().float()
+                shift_labels = labels[..., 1:].contiguous()
+                shift_weights = loss_weights[..., 1:].contiguous()
+                loss_fct = torch.nn.CrossEntropyLoss(reduction="none", ignore_index=-100)
+                token_loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+                token_loss = token_loss.view_as(shift_labels)
+                valid = shift_labels.ne(-100).float()
+                weighted_valid = shift_weights * valid
+                denom = weighted_valid.sum().clamp_min(1.0)
+                loss = (token_loss * weighted_valid).sum() / denom
             return (loss, outputs) if return_outputs else loss
 
+    save_strategy = "steps" if args.save_steps > 0 else "epoch"
     training_args = TrainingArguments(
         output_dir=args.output_dir,
         per_device_train_batch_size=args.batch_size,
@@ -206,11 +288,14 @@ def main() -> None:
         num_train_epochs=args.epochs,
         learning_rate=args.lr,
         bf16=True,
-        logging_steps=1,
-        save_strategy="epoch",
+        logging_steps=args.logging_steps,
+        save_strategy=save_strategy,
+        save_steps=args.save_steps if args.save_steps > 0 else 500,
+        max_steps=args.max_steps if args.max_steps > 0 else -1,
         report_to=[],
         remove_unused_columns=False,
         dataloader_num_workers=0,
+        gradient_checkpointing=args.gradient_checkpointing,
     )
     trainer = WeightedTrainer(
         model=model,

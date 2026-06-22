@@ -1,31 +1,29 @@
 #!/usr/bin/env python3
-"""Build weighted SFT ablation datasets from DAG-IG Pix2Fact reward labels."""
+"""Build segment-weighted SFT datasets from the clean Pix2Fact-DAGIG package."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import math
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 
-VARIANTS = ["outcome_only", "local_ig", "dagig"]
-TASKS = ["local_observation", "search_query", "answer_from_evidence"]
+DEFAULT_PACKAGE_NAME = "pix2fact_dagig_1k_gpt54_teacher_clean_package"
+DEFAULT_MAIN_FILE = "data/pix2fact_dagig_train_AB_clean_split.jsonl"
+VARIANTS = ["uniform_sft", "outcome_only_sft", "local_ig_sft", "dagig_sft", "dagig_action_only_sft"]
+SEGMENTS = ["observe", "search_decision", "search", "evidence", "answer"]
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--package_dir", required=True)
-    parser.add_argument("--out_dir", default="data")
-    parser.add_argument(
-        "--main_file",
-        default="dagig_relabel/qwen_dagig_reward_labeled_30_with_image_paths.jsonl",
-        help="Path relative to package_dir unless absolute.",
-    )
-    parser.add_argument("--repeat_scale", type=float, default=4.0)
-    parser.add_argument("--min_answer_weight", type=float, default=0.2)
+    parser.add_argument("--package_dir", default=f"data/{DEFAULT_PACKAGE_NAME}")
+    parser.add_argument("--out_dir", default="data/dagig_sft")
+    parser.add_argument("--main_file", default=DEFAULT_MAIN_FILE)
+    parser.add_argument("--min_process_weight", type=float, default=0.05)
+    parser.add_argument("--include_test", action="store_true", help="Also write held-out test JSONL for evaluation.")
+    parser.add_argument("--debug_examples", type=int, default=10)
     return parser.parse_args()
 
 
@@ -51,225 +49,256 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     print(f"wrote {path} n={len(rows)}")
 
 
-def resolve_path(package_dir: Path, rel_or_abs: str) -> str:
-    path = Path(str(rel_or_abs))
-    if path.is_absolute():
-        return str(path)
-    return str((package_dir / path).resolve())
+def teacher(row: dict[str, Any]) -> dict[str, Any]:
+    value = row.get("gpt54_teacher")
+    if not isinstance(value, dict):
+        raise ValueError(f"Missing gpt54_teacher for sample_id={row.get('sample_id')}")
+    return value
 
 
-def safe_float(value: Any, default: float = 0.0) -> float:
+def action_rewards(row: dict[str, Any]) -> dict[str, float]:
+    rewards = teacher(row).get("action_rewards")
+    if not isinstance(rewards, dict):
+        raise ValueError(f"Missing action_rewards for sample_id={row.get('sample_id')}")
+
+    def get(key: str) -> float:
+        try:
+            return max(0.0, min(1.0, float(rewards.get(key, 0.0))))
+        except (TypeError, ValueError):
+            return 0.0
+
+    return {
+        "observe_crop": get("observe_crop"),
+        "search_query": get("search_query"),
+        "evidence_selection": get("evidence_selection"),
+        "answer": get("answer"),
+    }
+
+
+def training_weight(row: dict[str, Any]) -> float:
     try:
-        if value is None:
-            return default
-        return float(value)
+        return float(teacher(row).get("training_weight", 1.0))
     except (TypeError, ValueError):
-        return default
+        return 1.0
 
 
-def bounded_components(row: dict[str, Any]) -> dict[str, float]:
-    comp = row.get("bounded_components") or {}
-    if not isinstance(comp, dict):
-        comp = {}
+def resolve_image_path(package_dir: Path, row: dict[str, Any], key: str) -> str:
+    package_paths = row.get("package_image_paths")
+    if isinstance(package_paths, dict) and package_paths.get(key):
+        path = Path(str(package_paths[key]))
+        resolved = path if path.is_absolute() else package_dir / path
+    else:
+        image_paths = row.get("image_paths")
+        if not isinstance(image_paths, dict) or not image_paths.get(key):
+            raise FileNotFoundError(f"Missing image path key={key} for sample_id={row.get('sample_id')}")
+        raw = Path(str(image_paths[key]))
+        resolved = raw if raw.is_file() else package_dir / "images" / key / raw.name
+    if not resolved.is_file():
+        raise FileNotFoundError(f"Missing image file for sample_id={row.get('sample_id')} key={key}: {resolved}")
+    return str(resolved.resolve())
+
+
+def evidence_text(row: dict[str, Any]) -> str:
+    t = teacher(row)
+    quote = str(t.get("supporting_evidence_quote", "")).strip()
+    if quote:
+        return quote
+    evidences = row.get("evidences")
+    if isinstance(evidences, list):
+        for item in evidences:
+            if isinstance(item, dict) and item.get("answer_supported"):
+                text = str(item.get("text", "")).strip()
+                if text:
+                    return text
+        for item in evidences:
+            if isinstance(item, dict):
+                text = str(item.get("text", "")).strip()
+                if text:
+                    return text
+    return ""
+
+
+def bool_text(value: Any) -> str:
+    if isinstance(value, str):
+        return "true" if value.lower() in {"1", "true", "yes", "y"} else "false"
+    return "true" if bool(value) else "false"
+
+
+def target_segments(row: dict[str, Any]) -> dict[str, str]:
+    t = teacher(row)
     return {
-        "future_r": max(0.0, safe_float(comp.get("future_r"))),
-        "direct_r": max(0.0, safe_float(comp.get("direct_r"))),
-        "evidence_r": max(0.0, safe_float(comp.get("evidence_r"))),
+        "observe": str(t.get("local_observation", "")).strip(),
+        "search_decision": bool_text(t.get("search_needed", True)),
+        "search": str(t.get("repaired_search_query") or row.get("hf_search_query") or "").strip(),
+        "evidence": evidence_text(row),
+        "answer": str(row.get("answer", "")).strip(),
     }
 
 
-def variant_weights(row: dict[str, Any], min_answer_weight: float) -> dict[str, dict[str, float]]:
-    comp = bounded_components(row)
-    future_r = comp["future_r"]
-    direct_r = comp["direct_r"]
-    evidence_r = comp["evidence_r"]
+def format_target(segments: dict[str, str]) -> str:
+    return "\n".join(f"<{name}>\n{segments[name]}\n</{name}>" for name in SEGMENTS)
+
+
+def prompt_text(row: dict[str, Any], has_oracle_crop: bool = True) -> str:
+    image_text = "the full image and the crop" if has_oracle_crop else "the provided region-normalized image"
+    return (
+        f"You are a multimodal search agent. Use {image_text} to produce a grounded "
+        "search trajectory. Return exactly these XML-like sections: <observe>, <search_decision>, "
+        "<search>, <evidence>, <answer>.\n\n"
+        f"Question: {str(row.get('question', '')).strip()}"
+    )
+
+
+def variant_segment_weights(row: dict[str, Any], min_process_weight: float) -> dict[str, dict[str, float]]:
+    w = training_weight(row)
+    r = action_rewards(row)
+    search_decision_reward = r["search_query"] if teacher(row).get("search_needed", True) else r["answer"]
     return {
-        "outcome_only": {
-            "local_observation": 0.0,
-            "search_query": 0.0,
-            "answer_from_evidence": 1.0,
+        "uniform_sft": {
+            "observe": w,
+            "search_decision": w,
+            "search": w,
+            "evidence": w,
+            "answer": w,
         },
-        "local_ig": {
-            "local_observation": direct_r,
-            "search_query": 0.0,
-            "answer_from_evidence": max(min_answer_weight, evidence_r),
+        "outcome_only_sft": {
+            "observe": w * min_process_weight,
+            "search_decision": w * min_process_weight,
+            "search": w * min_process_weight,
+            "evidence": w * min_process_weight,
+            "answer": w * r["answer"],
         },
-        "dagig": {
-            "local_observation": 0.30 * direct_r + 0.70 * future_r,
-            "search_query": future_r,
-            "answer_from_evidence": max(min_answer_weight, evidence_r),
+        "local_ig_sft": {
+            "observe": w * r["observe_crop"],
+            "search_decision": w * min_process_weight,
+            "search": w * min_process_weight,
+            "evidence": w * r["evidence_selection"],
+            "answer": w * r["answer"],
+        },
+        "dagig_sft": {
+            "observe": w * r["observe_crop"],
+            "search_decision": w * search_decision_reward,
+            "search": w * r["search_query"],
+            "evidence": w * r["evidence_selection"],
+            "answer": w * r["answer"],
+        },
+        "dagig_action_only_sft": {
+            "observe": w * r["observe_crop"],
+            "search_decision": w * search_decision_reward,
+            "search": w * r["search_query"],
+            "evidence": w * min_process_weight,
+            "answer": w * r["answer"],
         },
     }
 
 
-def repeat_count(loss_weight: float, repeat_scale: float) -> int:
-    if loss_weight <= 0:
-        return 0
-    return max(1, int(round(loss_weight * repeat_scale)))
-
-
-def task_prompt(task_type: str, row: dict[str, Any]) -> str:
-    question = str(row.get("question", "")).strip()
-    local = str(row.get("qwen_local_observation", "")).strip()
-    evidence = str(row.get("selected_evidence_text", "")).strip()
-    if task_type == "local_observation":
-        return (
-            "Look at the image crop and identify the key local visual clue needed to answer the question. "
-            "Return a short phrase only. Do not answer the final question.\n\n"
-            f"Question: {question}"
-        )
-    if task_type == "search_query":
-        return (
-            "Given the question and local visual observation, write a concise web search query. "
-            "Return only the query.\n\n"
-            f"Question: {question}\nLocal visual observation: {local}"
-        )
-    if task_type == "answer_from_evidence":
-        return (
-            "Answer the question using the provided evidence. Return the shortest final answer only.\n\n"
-            f"Question: {question}\nEvidence: {evidence}"
-        )
-    raise ValueError(f"Unsupported task_type={task_type}")
-
-
-def task_target(task_type: str, row: dict[str, Any]) -> str:
-    key = {
-        "local_observation": "qwen_local_observation",
-        "search_query": "qwen_search_query",
-        "answer_from_evidence": "answer_target",
-    }[task_type]
-    return str(row.get(key, "")).strip()
-
-
-def task_images(task_type: str, row: dict[str, Any], package_dir: Path) -> dict[str, Any]:
-    image_paths = row.get("package_image_paths") or {}
-    if not isinstance(image_paths, dict):
-        image_paths = {}
-    if task_type != "local_observation":
-        return {"images": [], "image_path": "", "full_image_path": ""}
-    crop = image_paths.get("qwen_crop_readable") or image_paths.get("crop_fixed")
-    full = image_paths.get("qwen_full_resized") or image_paths.get("full_original")
-    if not crop:
-        raise FileNotFoundError(f"Missing crop path for sample_id={row.get('sample_id')}")
-    crop_abs = resolve_path(package_dir, str(crop))
-    full_abs = resolve_path(package_dir, str(full)) if full else ""
-    if not Path(crop_abs).is_file():
-        raise FileNotFoundError(f"Crop image missing for sample_id={row.get('sample_id')}: {crop_abs}")
-    if full_abs and not Path(full_abs).is_file():
-        raise FileNotFoundError(f"Full image missing for sample_id={row.get('sample_id')}: {full_abs}")
-    images = [crop_abs]
-    if full_abs:
-        images.append(full_abs)
-    return {"images": images, "image_path": crop_abs, "full_image_path": full_abs}
-
-
-def paper_use(task_type: str, variant: str) -> str:
-    if task_type == "local_observation":
-        return f"{variant}: tests whether training credits local visual grounding."
-    if task_type == "search_query":
-        return f"{variant}: tests whether training credits future search action generation."
-    return f"{variant}: tests final answer from supporting evidence."
-
-
-def make_example(
-    row: dict[str, Any],
-    variant: str,
-    task_type: str,
-    loss_weight: float,
-    package_dir: Path,
-    repeat_scale: float,
-) -> dict[str, Any]:
-    image_info = task_images(task_type, row, package_dir)
-    prompt = task_prompt(task_type, row)
-    target = task_target(task_type, row)
-    if not target:
-        raise ValueError(f"Empty target for sample_id={row.get('sample_id')} task={task_type}")
+def make_example(package_dir: Path, row: dict[str, Any], variant: str, min_process_weight: float) -> dict[str, Any]:
+    segments = target_segments(row)
+    if not segments["observe"] or not segments["search"] or not segments["answer"]:
+        raise ValueError(f"Empty required target segment for sample_id={row.get('sample_id')}")
+    weights = variant_segment_weights(row, min_process_weight)[variant]
+    target = format_target(segments)
+    t = teacher(row)
+    full_image = resolve_image_path(package_dir, row, "full_model_input")
+    try:
+        crop_image = resolve_image_path(package_dir, row, "crop_model_input")
+    except FileNotFoundError:
+        crop_image = ""
+    images = [full_image] + ([crop_image] if crop_image else [])
+    prompt = prompt_text(row, has_oracle_crop=bool(crop_image))
     return {
         "sample_id": row.get("sample_id"),
         "variant": variant,
-        "task_type": task_type,
+        "split": row.get("split"),
+        "task_type": "oracle_crop_chain" if crop_image else "region_normalized_chain",
+        "input_mode": "full_plus_oracle_crop" if crop_image else "region_normalized_image_only",
         "prompt": prompt,
         "target": target,
+        "target_segments": segments,
+        "segment_weights": {name: float(weights[name]) for name in SEGMENTS},
+        "loss_weight": sum(float(weights[name]) for name in SEGMENTS) / len(SEGMENTS),
         "messages": [
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": target},
         ],
-        **image_info,
-        "loss_weight": float(loss_weight),
-        "repeat_count": repeat_count(float(loss_weight), repeat_scale),
-        "reward_components": bounded_components(row),
-        "raw_ig": row.get("raw_ig", {}),
+        "images": images,
+        "full_image_path": full_image,
+        "crop_image_path": crop_image,
+        "question": row.get("question"),
+        "answer": row.get("answer"),
+        "bbox_xyxy": row.get("bbox_xyxy"),
+        "image_width": row.get("image_width"),
+        "image_height": row.get("image_height"),
+        "tier": t.get("tier"),
+        "training_weight": training_weight(row),
+        "visual_anchor": t.get("visual_anchor"),
+        "visual_anchor_type": t.get("visual_anchor_type"),
+        "search_needed": bool(t.get("search_needed", True)),
+        "query_specificity": t.get("query_specificity"),
+        "evidence_support": t.get("evidence_support"),
+        "delayed_credit_strength": t.get("delayed_credit_strength"),
+        "action_rewards": action_rewards(row),
         "reward_variants": row.get("reward_variants", {}),
-        "final_seed_source": row.get("final_seed_source"),
-        "audit_severity": row.get("audit_severity"),
-        "paper_use": paper_use(task_type, variant),
+        "evidences": row.get("evidences", []),
+        "group_key": row.get("group_key"),
     }
 
 
-def split_rows(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    train = [r for r in rows if r.get("final_seed_source") == "original_full_exec"]
-    dev = [r for r in rows if r.get("final_seed_source") == "strict_local_retry_recovered"]
-    if not train or not dev:
-        raise ValueError(
-            "Expected non-empty train/dev split by final_seed_source "
-            "(original_full_exec / strict_local_retry_recovered)."
-        )
-    return train, dev
-
-
-def build_examples(rows: list[dict[str, Any]], package_dir: Path, repeat_scale: float, min_answer_weight: float) -> dict[str, list[dict[str, Any]]]:
-    out = {variant: [] for variant in VARIANTS}
+def split_examples(rows: list[dict[str, Any]], package_dir: Path, min_process_weight: float) -> dict[str, dict[str, list[dict[str, Any]]]]:
+    out: dict[str, dict[str, list[dict[str, Any]]]] = {variant: {"train": [], "dev": [], "test": []} for variant in VARIANTS}
     for row in rows:
-        weights = variant_weights(row, min_answer_weight)
+        split = str(row.get("split", "train"))
+        if split not in {"train", "dev", "test"}:
+            raise ValueError(f"Unsupported split={split!r} for sample_id={row.get('sample_id')}")
+        row_tier = str(teacher(row).get("tier", ""))
+        if row_tier not in {"A", "B"}:
+            raise ValueError(f"Non A/B row found in main file: sample_id={row.get('sample_id')} tier={row_tier}")
+        if not bool(teacher(row).get("keep_for_training", False)):
+            raise ValueError(f"keep_for_training=false in main file: sample_id={row.get('sample_id')}")
         for variant in VARIANTS:
-            for task_type in TASKS:
-                ex = make_example(
-                    row=row,
-                    variant=variant,
-                    task_type=task_type,
-                    loss_weight=weights[variant][task_type],
-                    package_dir=package_dir,
-                    repeat_scale=repeat_scale,
-                )
-                out[variant].append(ex)
+            out[variant][split].append(make_example(package_dir, row, variant, min_process_weight))
     return out
 
 
-def expanded(examples: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    rows = []
-    for ex in examples:
-        for i in range(int(ex.get("repeat_count", 0))):
-            new_ex = dict(ex)
-            new_ex["repeat_index"] = i
-            rows.append(new_ex)
-    return rows
-
-
-def write_summary(path: Path, rows: list[dict[str, Any]], examples_by_variant: dict[str, list[dict[str, Any]]]) -> None:
-    summary: dict[str, Any] = {
-        "input_n": len(rows),
-        "source_counts": dict(Counter(str(r.get("final_seed_source")) for r in rows)),
-        "audit_counts": dict(Counter(str(r.get("audit_severity")) for r in rows)),
+def write_debug(path: Path, rows: list[dict[str, Any]], examples_by_variant: dict[str, dict[str, list[dict[str, Any]]]], n: int) -> None:
+    debug = {
+        "source_n": len(rows),
+        "source_split_counts": dict(Counter(str(r.get("split")) for r in rows)),
+        "source_tier_counts": dict(Counter(str(teacher(r).get("tier")) for r in rows)),
         "variants": {},
+        "examples": [],
     }
-    for variant, examples in examples_by_variant.items():
-        summary["variants"][variant] = {
-            "n_examples": len(examples),
-            "n_expanded": len(expanded(examples)),
-            "task_counts": dict(Counter(ex["task_type"] for ex in examples)),
-            "positive_weight_task_counts": dict(Counter(ex["task_type"] for ex in examples if ex["loss_weight"] > 0)),
-            "loss_weight_mean": sum(float(ex["loss_weight"]) for ex in examples) / len(examples) if examples else 0.0,
-        }
+    for variant, splits in examples_by_variant.items():
+        debug["variants"][variant] = {}
+        for split, examples in splits.items():
+            debug["variants"][variant][split] = {
+                "n": len(examples),
+                "mean_loss_weight": sum(float(ex["loss_weight"]) for ex in examples) / max(1, len(examples)),
+                "segment_weight_means": {
+                    seg: sum(float(ex["segment_weights"][seg]) for ex in examples) / max(1, len(examples)) for seg in SEGMENTS
+                },
+            }
+    for ex in examples_by_variant["dagig_sft"]["train"][:n]:
+        debug["examples"].append(
+            {
+                "sample_id": ex["sample_id"],
+                "question": ex["question"],
+                "answer": ex["answer"],
+                "visual_anchor": ex["visual_anchor"],
+                "target_segments": ex["target_segments"],
+                "action_rewards": ex["action_rewards"],
+                "segment_weights": ex["segment_weights"],
+            }
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
+        json.dump(debug, f, ensure_ascii=False, indent=2)
     print(f"wrote {path}")
 
 
 def main() -> None:
     args = parse_args()
     package_dir = Path(args.package_dir).expanduser().resolve()
-    out_dir = Path(args.out_dir).expanduser().resolve()
     main_path = Path(args.main_file)
     if not main_path.is_absolute():
         main_path = package_dir / main_path
@@ -277,36 +306,25 @@ def main() -> None:
         raise FileNotFoundError(f"Training file missing: {main_path}")
 
     rows = load_jsonl(main_path)
-    train_rows, dev_rows = split_rows(rows)
-    examples_by_variant = build_examples(train_rows, package_dir, args.repeat_scale, args.min_answer_weight)
-
+    examples_by_variant = split_examples(rows, package_dir, args.min_process_weight)
+    out_dir = Path(args.out_dir).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    for variant, examples in examples_by_variant.items():
-        write_jsonl(out_dir / f"sft_{variant}.jsonl", examples)
-        write_jsonl(out_dir / f"sft_{variant}_expanded.jsonl", expanded(examples))
 
-    eval_clean_dev = []
-    eval_train_sanity = []
-    for variant in VARIANTS:
-        eval_clean_dev.extend(build_examples(dev_rows, package_dir, args.repeat_scale, args.min_answer_weight)[variant])
-        eval_train_sanity.extend(examples_by_variant[variant][: min(9, len(examples_by_variant[variant]))])
-    write_jsonl(out_dir / "eval_clean_dev.jsonl", eval_clean_dev)
-    write_jsonl(out_dir / "eval_train_sanity.jsonl", eval_train_sanity)
+    all_dev: list[dict[str, Any]] = []
+    all_test: list[dict[str, Any]] = []
+    for variant, splits in examples_by_variant.items():
+        write_jsonl(out_dir / f"{variant}_train.jsonl", splits["train"])
+        write_jsonl(out_dir / f"{variant}_dev.jsonl", splits["dev"])
+        if args.include_test:
+            write_jsonl(out_dir / f"{variant}_test.jsonl", splits["test"])
+        all_dev.extend(splits["dev"])
+        all_test.extend(splits["test"])
 
-    repair_path = package_dir / "seed_v1_splits/qwen_executable_seed_v1_final_repair.jsonl"
-    if repair_path.is_file():
-        repair_rows = load_jsonl(repair_path)
-        repair_examples = []
-        for row in repair_rows:
-            try:
-                repair_examples.extend(build_examples([row], package_dir, args.repeat_scale, args.min_answer_weight)["dagig"])
-            except Exception:
-                continue
-        write_jsonl(out_dir / "eval_repair_if_available.jsonl", repair_examples)
-    else:
-        write_jsonl(out_dir / "eval_repair_if_available.jsonl", [])
-
-    write_summary(out_dir / "sft_build_summary.json", train_rows, examples_by_variant)
+    write_jsonl(out_dir / "eval_all_variants_dev.jsonl", all_dev)
+    if args.include_test:
+        write_jsonl(out_dir / "eval_all_variants_test.jsonl", all_test)
+    write_jsonl(out_dir / "eval_train_sanity.jsonl", examples_by_variant["dagig_sft"]["train"][: min(20, len(examples_by_variant["dagig_sft"]["train"]))])
+    write_debug(out_dir / "sft_build_summary.json", rows, examples_by_variant, args.debug_examples)
 
 
 if __name__ == "__main__":

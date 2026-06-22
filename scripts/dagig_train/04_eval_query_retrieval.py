@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--package_dir", required=True)
     parser.add_argument(
         "--main_file",
-        default="dagig_relabel/qwen_dagig_reward_labeled_30_with_image_paths.jsonl",
+        default="data/pix2fact_dagig_train_AB_clean_split.jsonl",
         help="Path relative to package_dir unless absolute.",
     )
     parser.add_argument("--details_csv", action="append", required=True)
@@ -52,6 +52,11 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
             if line.strip():
                 rows.append(json.loads(line))
     return rows
+
+
+def teacher(row: dict[str, Any]) -> dict[str, Any]:
+    value = row.get("gpt54_teacher")
+    return value if isinstance(value, dict) else {}
 
 
 def method_from_path(path: Path) -> str:
@@ -89,41 +94,89 @@ class BM25:
                 idf = self.idf.get(tok, 0.0)
                 denom = tf[tok] + k1 * (1 - b + b * dl / max(self.avgdl, 1e-6))
                 score += idf * (tf[tok] * (k1 + 1) / denom) * qf
-            ranked.append((doc["sample_id"], score))
+            ranked.append((doc["doc_id"], score))
         ranked.sort(key=lambda item: item[1], reverse=True)
         return ranked
 
 
-def corpus_text(row: dict[str, Any], mode: str) -> str:
+def evidence_items(row: dict[str, Any]) -> list[dict[str, Any]]:
+    value = row.get("evidences")
+    return value if isinstance(value, list) else []
+
+
+def corpus_text(row: dict[str, Any], item: dict[str, Any], mode: str) -> str:
+    t = teacher(row)
+    evidence_text = str(item.get("text", ""))
+    supporting_quote = str(t.get("supporting_evidence_quote", ""))
+    local_observation = str(t.get("local_observation") or row.get("qwen_local_observation", ""))
     if mode == "evidence_only":
-        return str(row.get("selected_evidence_text", ""))
+        return " ".join([supporting_quote, evidence_text]).strip()
     if mode == "local_evidence":
         return " ".join(
             [
-                str(row.get("qwen_local_observation", "")),
-                str(row.get("selected_evidence_text", "")),
+                local_observation,
+                supporting_quote,
+                evidence_text,
             ]
         )
     return " ".join(
         [
             str(row.get("question", "")),
-            str(row.get("qwen_local_observation", "")),
-            str(row.get("selected_evidence_text", "")),
+            local_observation,
+            supporting_quote,
+            evidence_text,
         ]
     )
 
 
-def build_corpus(package_dir: Path, main_file: str, corpus_mode: str) -> tuple[BM25, dict[str, dict[str, Any]]]:
+def supporting_doc_ids(row: dict[str, Any]) -> set[str]:
+    sample_id = str(row.get("sample_id", ""))
+    t = teacher(row)
+    support_rank = t.get("supporting_evidence_rank")
+    ids = set()
+    for item in evidence_items(row):
+        if not isinstance(item, dict):
+            continue
+        rank = item.get("rank")
+        doc_id = f"{sample_id}#e{rank}"
+        if bool(item.get("answer_supported")):
+            ids.add(doc_id)
+        elif support_rank is not None and str(rank) == str(support_rank):
+            ids.add(doc_id)
+    if not ids:
+        quote = str(t.get("supporting_evidence_quote", "")).strip()
+        for item in evidence_items(row):
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("text", ""))
+            if quote and quote in text:
+                ids.add(f"{sample_id}#e{item.get('rank')}")
+    return ids
+
+
+def build_corpus(package_dir: Path, main_file: str, corpus_mode: str) -> tuple[BM25, dict[str, set[str]]]:
     path = Path(main_file)
     if not path.is_absolute():
         path = package_dir / path
     rows = load_jsonl(path)
-    by_id = {str(r["sample_id"]): r for r in rows}
     docs = []
+    targets: dict[str, set[str]] = {}
     for row in rows:
-        text = corpus_text(row, corpus_mode)
-        docs.append({"sample_id": str(row["sample_id"]), "text": text})
-    return BM25(docs), by_id
+        sample_id = str(row["sample_id"])
+        targets[sample_id] = supporting_doc_ids(row)
+        for item in evidence_items(row):
+            if not isinstance(item, dict):
+                continue
+            rank = item.get("rank")
+            docs.append(
+                {
+                    "doc_id": f"{sample_id}#e{rank}",
+                    "sample_id": sample_id,
+                    "rank": str(rank),
+                    "text": corpus_text(row, item, corpus_mode),
+                }
+            )
+    return BM25(docs), targets
 
 
 def load_search_rows(path: Path, dedupe: bool) -> list[dict[str, str]]:
@@ -132,33 +185,34 @@ def load_search_rows(path: Path, dedupe: bool) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if row.get("task_type") != "search_query":
+            has_chain_query = "search_prediction" in row
+            if not has_chain_query and row.get("task_type") != "search_query":
                 continue
             sample_id = str(row.get("sample_id", ""))
-            pred = str(row.get("prediction", ""))
+            pred = str(row.get("search_prediction") or row.get("prediction", ""))
             if dedupe:
                 if sample_id in seen:
                     continue
                 seen.add(sample_id)
-            rows.append({"sample_id": sample_id, "prediction": pred, "target": str(row.get("target", ""))})
+            rows.append({"sample_id": sample_id, "prediction": pred, "target": str(row.get("search_target") or row.get("target", ""))})
     return rows
 
 
-def reciprocal_rank(ranked: list[tuple[str, float]], target_id: str) -> float:
-    for idx, (sample_id, _score) in enumerate(ranked, start=1):
-        if sample_id == target_id:
+def reciprocal_rank(ranked: list[tuple[str, float]], target_ids: set[str]) -> float:
+    for idx, (doc_id, _score) in enumerate(ranked, start=1):
+        if doc_id in target_ids:
             return 1.0 / idx
     return 0.0
 
 
-def target_rank(ranked: list[tuple[str, float]], target_id: str) -> int:
-    for idx, (sample_id, _score) in enumerate(ranked, start=1):
-        if sample_id == target_id:
+def target_rank(ranked: list[tuple[str, float]], target_ids: set[str]) -> int:
+    for idx, (doc_id, _score) in enumerate(ranked, start=1):
+        if doc_id in target_ids:
             return idx
     return len(ranked) + 1
 
 
-def evaluate_file(path: Path, bm25: BM25, dedupe: bool) -> dict[str, Any]:
+def evaluate_file(path: Path, bm25: BM25, targets: dict[str, set[str]], dedupe: bool) -> dict[str, Any]:
     rows = load_search_rows(path, dedupe=dedupe)
     if not rows:
         raise ValueError(f"No search_query rows found in {path}")
@@ -171,17 +225,18 @@ def evaluate_file(path: Path, bm25: BM25, dedupe: bool) -> dict[str, Any]:
         pred = row["prediction"].strip()
         nonempty += 1.0 if pred else 0.0
         ranked = bm25.rank(pred)
-        ids = [sample_id for sample_id, _score in ranked]
         target_id = row["sample_id"]
-        rank = target_rank(ranked, target_id)
+        target_ids = targets.get(target_id, set())
+        rank = target_rank(ranked, target_ids)
         target_ranks.append(rank)
-        top1 += 1.0 if ids[:1] == [target_id] else 0.0
-        top3 += 1.0 if target_id in ids[:3] else 0.0
-        top5 += 1.0 if target_id in ids[:5] else 0.0
-        mrr += reciprocal_rank(ranked, target_id)
+        top_doc_ids = [doc_id for doc_id, _score in ranked]
+        top1 += 1.0 if target_ids and bool(set(top_doc_ids[:1]) & target_ids) else 0.0
+        top3 += 1.0 if target_ids and bool(set(top_doc_ids[:3]) & target_ids) else 0.0
+        top5 += 1.0 if target_ids and bool(set(top_doc_ids[:5]) & target_ids) else 0.0
+        mrr += reciprocal_rank(ranked, target_ids)
         ranked_scores = dict(ranked)
-        target_score = ranked_scores.get(target_id, 0.0)
-        best_wrong = max((score for sample_id, score in ranked if sample_id != target_id), default=0.0)
+        target_score = max((ranked_scores.get(doc_id, 0.0) for doc_id in target_ids), default=0.0)
+        best_wrong = max((score for doc_id, score in ranked if doc_id not in target_ids), default=0.0)
         score_at_target.append(target_score)
         score_margins.append(target_score - best_wrong)
     n = len(rows)
@@ -203,8 +258,8 @@ def evaluate_file(path: Path, bm25: BM25, dedupe: bool) -> dict[str, Any]:
 def main() -> None:
     args = parse_args()
     package_dir = Path(args.package_dir).expanduser().resolve()
-    bm25, _by_id = build_corpus(package_dir, args.main_file, args.corpus_mode)
-    out_rows = [evaluate_file(Path(path), bm25, dedupe=args.dedupe) for path in args.details_csv]
+    bm25, targets = build_corpus(package_dir, args.main_file, args.corpus_mode)
+    out_rows = [evaluate_file(Path(path), bm25, targets=targets, dedupe=args.dedupe) for path in args.details_csv]
     for row in out_rows:
         row["corpus_mode"] = args.corpus_mode
     out_path = Path(args.output_csv)
