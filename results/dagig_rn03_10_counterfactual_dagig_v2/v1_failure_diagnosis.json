@@ -1,0 +1,222 @@
+{
+  "predictive_edges": [
+    {
+      "split": "train",
+      "comparison": "R_ground vs IoU",
+      "spearman": 0.5514200523848587,
+      "auc": "",
+      "top_bottom_gap": "0.2896905071774639"
+    },
+    {
+      "split": "train",
+      "comparison": "R_ground vs center-hit",
+      "spearman": 0.5504590359785035,
+      "auc": "0.8289357212471277",
+      "top_bottom_gap": "0.6943231441048034"
+    },
+    {
+      "split": "dev",
+      "comparison": "R_ground vs IoU",
+      "spearman": 0.49042859454876014,
+      "auc": "",
+      "top_bottom_gap": "0.24691815246991733"
+    },
+    {
+      "split": "dev",
+      "comparison": "R_ground vs center-hit",
+      "spearman": 0.3995751905969366,
+      "auc": "0.735810534912209",
+      "top_bottom_gap": "0.5612244897959183"
+    },
+    {
+      "split": "dev",
+      "comparison": "R_evidence vs evidence_support",
+      "spearman": 0.30375624799267154,
+      "auc": "0.6569790491293342",
+      "top_bottom_gap": "0.2959183673469388"
+    },
+    {
+      "split": "test",
+      "comparison": "R_ground vs IoU",
+      "spearman": 0.5219356807774271,
+      "auc": "",
+      "top_bottom_gap": "0.22895572973805337"
+    },
+    {
+      "split": "test",
+      "comparison": "R_ground vs center-hit",
+      "spearman": 0.5224432612163559,
+      "auc": "0.8087820512820513",
+      "top_bottom_gap": "0.640625"
+    },
+    {
+      "split": "test",
+      "comparison": "R_evidence vs evidence_support",
+      "spearman": 0.40718328252698804,
+      "auc": "0.7049512987012987",
+      "top_bottom_gap": "0.453125"
+    }
+  ],
+  "weak_edges": [
+    {
+      "split": "train",
+      "comparison": "DAGIG_total vs R@5",
+      "spearman": 0.2191956435499467,
+      "auc": "0.630158047183276",
+      "top_bottom_gap": "0.28285077951002224"
+    },
+    {
+      "split": "train",
+      "comparison": "DAGIG_total vs evidence_support",
+      "spearman": 0.20563140010358996,
+      "auc": "0.6279118674552938",
+      "top_bottom_gap": "0.24454148471615722"
+    },
+    {
+      "split": "train",
+      "comparison": "DAGIG_total vs answer F1",
+      "spearman": 0.05959912458370069,
+      "auc": "",
+      "top_bottom_gap": "0.027098376784893866"
+    },
+    {
+      "split": "train",
+      "comparison": "R_search vs R@5",
+      "spearman": 0.2367650527591232,
+      "auc": "0.626685679204097",
+      "top_bottom_gap": "0.2962138084632516"
+    },
+    {
+      "split": "train",
+      "comparison": "R_search vs MRR",
+      "spearman": 0.21775573634122214,
+      "auc": "",
+      "top_bottom_gap": "0.23010524896766577"
+    },
+    {
+      "split": "dev",
+      "comparison": "DAGIG_total vs R@5",
+      "spearman": 0.11585869131348628,
+      "auc": "0.5690376569037657",
+      "top_bottom_gap": "0.12631578947368421"
+    },
+    {
+      "split": "dev",
+      "comparison": "DAGIG_total vs evidence_support",
+      "spearman": 0.13034239852867754,
+      "auc": "0.5814400292763259",
+      "top_bottom_gap": "0.09183673469387754"
+    },
+    {
+      "split": "dev",
+      "comparison": "DAGIG_total vs answer F1",
+      "spearman": 0.03661677083877286,
+      "auc": "",
+      "top_bottom_gap": "0.018143960442722068"
+    },
+    {
+      "split": "dev",
+      "comparison": "R_search vs R@5",
+      "spearman": 0.031121432260168155,
+      "auc": "0.5164167828916782",
+      "top_bottom_gap": "0.0"
+    },
+    {
+      "split": "dev",
+      "comparison": "R_search vs MRR",
+      "spearman": 0.022243104221482568,
+      "auc": "",
+      "top_bottom_gap": "0.005385280343657484"
+    },
+    {
+      "split": "test",
+      "comparison": "DAGIG_total vs R@5",
+      "spearman": 0.2309358275718541,
+      "auc": "0.6347676531671859",
+      "top_bottom_gap": "0.2419354838709678"
+    },
+    {
+      "split": "test",
+      "comparison": "DAGIG_total vs evidence_support",
+      "spearman": 0.20549226937205556,
+      "auc": "0.6248647186147186",
+      "top_bottom_gap": "0.171875"
+    },
+    {
+      "split": "test",
+      "comparison": "DAGIG_total vs answer F1",
+      "spearman": -0.055764381261853756,
+      "auc": "",
+      "top_bottom_gap": "-0.0670763652751944"
+    },
+    {
+      "split": "test",
+      "comparison": "R_search vs R@5",
+      "spearman": 0.18154160270165307,
+      "auc": "0.5942367601246106",
+      "top_bottom_gap": "0.3225806451612903"
+    },
+    {
+      "split": "test",
+      "comparison": "R_search vs MRR",
+      "spearman": 0.13975319300698488,
+      "auc": "",
+      "top_bottom_gap": "0.18683448775428863"
+    }
+  ],
+  "generic_vs_counterfactual": [
+    {
+      "split": "dev",
+      "metric": "R@5",
+      "generic": 0.6354166666666666,
+      "counterfactual": 0.6185567010309279,
+      "delta_cf_minus_generic": -0.01685996563573877
+    },
+    {
+      "split": "dev",
+      "metric": "MRR",
+      "generic": 0.5256219027454987,
+      "counterfactual": 0.5132327857174049,
+      "delta_cf_minus_generic": -0.012389117028093755
+    },
+    {
+      "split": "dev",
+      "metric": "evidence_support",
+      "generic": 0.7551020408163265,
+      "counterfactual": 0.7346938775510204,
+      "delta_cf_minus_generic": -0.020408163265306034
+    },
+    {
+      "split": "test",
+      "metric": "R@5",
+      "generic": 0.578125,
+      "counterfactual": 0.5714285714285714,
+      "delta_cf_minus_generic": -0.006696428571428603
+    },
+    {
+      "split": "test",
+      "metric": "MRR",
+      "generic": 0.47003739818295737,
+      "counterfactual": 0.45708287813550974,
+      "delta_cf_minus_generic": -0.012954520047447626
+    },
+    {
+      "split": "test",
+      "metric": "evidence_support",
+      "generic": 0.671875,
+      "counterfactual": 0.65625,
+      "delta_cf_minus_generic": -0.015625
+    }
+  ],
+  "summary": {
+    "best_predictive_signal": "R_ground predicts IoU/center-hit; R_evidence is moderately useful.",
+    "weakest_signal": "R_search and DAGIG_total are weak predictors of downstream retrieval on dev.",
+    "why_generic_matches_or_beats": "generic-process directly rewards retrieval/evidence-style process metrics, while v1 DAG-IG uses weak lexical proxies for the search edge and noisy counterfactuals.",
+    "must_fix": [
+      "audit and filter bad counterfactuals",
+      "replace search-edge lexical proxy with retrieval-delta counterfactual credit",
+      "add explicit evidence support verifier",
+      "only train if v2 predictiveness passes thresholds"
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "primary_split": "dev",
+  "passed": false,
+  "checks": [
+    {
+      "split": "dev",
+      "score_key": "R_search_v3",
+      "target_key": "retrieval_r5",
+      "metric": "spearman",
+      "value": 0.746699344286606,
+      "threshold": 0.2,
+      "passed": true
+    },
+    {
+      "split": "dev",
+      "score_key": "DAGIG_v3_total",
+      "target_key": "evidence_support",
+      "metric": "spearman",
+      "value": 0.47693975449446946,
+      "threshold": 0.2,
+      "passed": true
+    },
+    {
+      "split": "dev",
+      "score_key": "DAGIG_v3_total",
+      "target_key": "supported_answer",
+      "metric": "auc",
+      "value": 0.591015625,
+      "threshold": 0.6,
+      "passed": false
+    }
+  ]
+}

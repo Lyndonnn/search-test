@@ -1,0 +1,7 @@
+method,split,n,detection_rate,mean_iou,iou_ge_0_3,center_hit_rate,no_detection_rate,valid_format_rate,answer_em,answer_f1,notes
+previous direct-bbox autonomous,old_eval,113,1.0,0.03577631103393337,0.02654867256637168,0.13274336283185842,,,,,old autonomous direct numeric bbox baseline
+teacher ground-expression + GroundingDINO,dev,98,1.0,0.30416240665909805,0.46938775510204084,0.7040816326530612,0.0,,,,teacher expression feasibility
+teacher ground-expression + GroundingDINO,test,64,1.0,0.37662309164922514,0.546875,0.734375,0.0,,,,teacher expression feasibility
+model ground-expression + GroundingDINO,dev,98,1.0,0.2828053203246432,0.42857142857142855,0.6428571428571429,0.0,0.9897959183673469,0.05102040816326531,0.1616610063634068,ground-action SFT model expression
+model ground-expression + GroundingDINO,test,64,1.0,0.31021275263764037,0.453125,0.59375,0.0,0.96875,0.015625,0.1573283084626931,ground-action SFT model expression
+no-ground search baseline,NA,,,,,,,,,,not_available in current RN03_10 artifacts

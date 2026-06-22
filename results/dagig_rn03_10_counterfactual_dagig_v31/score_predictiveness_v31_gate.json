@@ -1,0 +1,51 @@
+{
+  "primary_split": "dev",
+  "passed": false,
+  "checks": [
+    {
+      "split": "dev",
+      "score_key": "R_search_v3",
+      "target_key": "retrieval_r5",
+      "metric": "spearman",
+      "value": 0.746699344286606,
+      "threshold": 0.2,
+      "passed": true
+    },
+    {
+      "split": "dev",
+      "score_key": "R_evidence",
+      "target_key": "evidence_support",
+      "metric": "spearman",
+      "value": 0.30375624799267154,
+      "threshold": 0.35,
+      "passed": false
+    },
+    {
+      "split": "dev",
+      "score_key": "R_answer_v31",
+      "target_key": "supported_answer_v2",
+      "metric": "auc",
+      "value": 0.6709844559585493,
+      "threshold": 0.6,
+      "passed": true
+    },
+    {
+      "split": "dev",
+      "score_key": "DAGIG_v31_total",
+      "target_key": "evidence_support",
+      "metric": "spearman",
+      "value": 0.5170792923170325,
+      "threshold": 0.2,
+      "passed": true
+    },
+    {
+      "split": "dev",
+      "score_key": "DAGIG_v31_total",
+      "target_key": "supported_answer_v2",
+      "metric": "auc",
+      "value": 0.49697754749568224,
+      "threshold": 0.6,
+      "passed": false
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "box_threshold": 0.1,
+  "text_threshold": 0.1,
+  "n": 98,
+  "detected": 98,
+  "detection_rate": 1.0,
+  "no_detection_rate": 0.0,
+  "mean_iou": 0.30416240665909805,
+  "median_iou": 0.29465283028418815,
+  "iou_ge_0_1": 0.7551020408163265,
+  "iou_ge_0_3": 0.46938775510204084,
+  "iou_ge_0_5": 0.20408163265306123,
+  "center_hit_rate": 0.7040816326530612,
+  "mean_best_score": 0.5687697906883395,
+  "median_best_score": 0.5585346519947052,
+  "mean_pred_gold_area_ratio": 1.9701601886519793,
+  "median_pred_gold_area_ratio": 0.7634103371873433,
+  "extreme_box_rate": 0.07142857142857142
+}

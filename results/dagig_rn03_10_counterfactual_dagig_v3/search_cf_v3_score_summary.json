@@ -1,0 +1,41 @@
+[
+  {
+    "split": "train",
+    "n": 1832,
+    "DAGIG_v3_total": 0.3181290849272357,
+    "R_search_v3": 0.30307417231517847,
+    "R_search_old": 0.0709674061281526,
+    "retrieval_r5": 0.6169265033407573,
+    "retrieval_mrr": 0.50695201069603,
+    "evidence_support": 0.6861353711790393,
+    "supported_answer": 0.09989082969432314,
+    "answer_f1": 0.12056562918494293,
+    "search_cf_v3_valid": 0.9912663755458515
+  },
+  {
+    "split": "dev",
+    "n": 392,
+    "DAGIG_v3_total": 0.3582440395197413,
+    "R_search_v3": 0.33456735369152235,
+    "R_search_old": 0.06939897032398644,
+    "retrieval_r5": 0.6240208877284595,
+    "retrieval_mrr": 0.5196097629855679,
+    "evidence_support": 0.6913265306122449,
+    "supported_answer": 0.10204081632653061,
+    "answer_f1": 0.1419300285470266,
+    "search_cf_v3_valid": 1.0
+  },
+  {
+    "split": "test",
+    "n": 256,
+    "DAGIG_v3_total": 0.1945819965472922,
+    "R_search_v3": 0.2540972962114263,
+    "R_search_old": 0.03806694176360767,
+    "retrieval_r5": 0.5737051792828686,
+    "retrieval_mrr": 0.47597079702168293,
+    "evidence_support": 0.65625,
+    "supported_answer": 0.08203125,
+    "answer_f1": 0.13620559030507978,
+    "search_cf_v3_valid": 0.96875
+  }
+]
